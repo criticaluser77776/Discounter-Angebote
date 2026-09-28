@@ -434,3 +434,7 @@ pre.log {
 /* ❗ an Angebotskarten */
 .ic.prio { font-size: 13px; opacity: .5; }
 .ic.prio.on { opacity: 1; color: var(--red); border-color: var(--red); background: var(--red-soft); }
+/* Favoriten: Zettel-Knöpfe im Kopf, Einstellungen per ⚙️ */
+.fav-acts { display: flex; gap: 4px; justify-content: flex-end; margin-top: 6px; }
+.fav-acts .ic { width: 30px; height: 30px; }
+.fav-settings { border-top: 1px solid var(--line); padding-top: 8px; background: var(--surface-2); }

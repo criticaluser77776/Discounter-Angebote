@@ -63,7 +63,7 @@ const S = {
   q: '', qFacet: null, qBrands: new Set(), showWeak: false, limit: 60,
   brands: new Set(), brandOnly: false,           // Markenfilter in der Gruppenansicht
   draft: null, pickOpen: null, pickQ: '',         // Favoriten-Auswahl
-  open: new Set(), sheetId: null, sheetOpen: false,
+  open: new Set(), favSet: new Set(), sheetId: null, sheetOpen: false,
   status: null, poll: null, wasRunning: false,
   sort: load('sort', 'unit'),
   f: Object.assign({ off: [], place: '', hideApp: false, hideOnline: true, onlyCurrent: false, hideNonFood: false, theme: 'auto' },
@@ -580,7 +580,8 @@ function renderFavs() {
     const best = m[0];
     const fresh = m.filter(isNew).length;
     const L = favLabel(f);
-    const open = S.open.has(f.id);
+    const open = S.open.has(f.id), settings = S.favSet.has(f.id);
+    const wish = Li.favWish(f);  // offener Wunsch zu diesem Favoriten auf dem Zettel?
     h += `<section class="fav" data-fid="${f.id}"><div class="fav-h" data-act="favOpen" data-fid="${f.id}">
       ${own ? '<span class="fav-drag" aria-label="Verschieben" title="Zum Verschieben ziehen">⠿</span>' : ''}
       <span style="font-size:22px">${L.icon}</span>
@@ -588,10 +589,16 @@ function renderFavs() {
       <div class="fav-r">${m.length ? `<span class="cnt">${m.length}</span>` : '<span class="none">kein Angebot</span>'}
         ${fresh ? `<span class="new">${fresh} neu</span>` : ''}
         ${best ? `<span class="fav-best${best.ea ? ' is-app' : ''}">ab ${best.ea ? '📱 ' : ''}${esc(pack ? `${fmt(best.ep)} €` : priceLine(best))}</span>
-          <span class="fav-rt">${esc(rname(best))}</span>` : ''}</div></div>`;
-    if (open) {
+          <span class="fav-rt">${esc(rname(best))}</span>` : ''}
+        <span class="fav-acts">
+          <button class="ic add ${wish ? 'on' : ''}" data-act="favWish" data-fid="${f.id}" aria-label="Auf den Einkaufszettel">＋</button>
+          <button class="ic prio ${wish?.prio ? 'on' : ''}" data-act="favWish" data-fid="${f.id}" data-prio="1" aria-label="Wichtig auf den Einkaufszettel">❗</button>
+          <button class="ic ${settings ? 'on' : ''}" data-act="favSettings" data-fid="${f.id}" aria-label="Einstellungen">⚙️</button>
+        </span></div></div>`;
+    if (settings) {
+      // Einstellungen nur auf Wunsch (⚙️), nicht beim Aufklappen
       const unit = f.maxUnit || dominantUnit(m) || 'kg';
-      h += `<div class="fav-tools">
+      h += `<div class="fav-settings"><div class="fav-tools">
         <span>Name:</span><input class="fav-name" data-fid="${f.id}" data-field="name" value="${esc(f.name || '')}"
           placeholder="${esc(favLabelAuto(f).title)}" autocomplete="off"></div>
         <div class="fav-tools">
@@ -603,10 +610,11 @@ function renderFavs() {
         <input type="number" step="0.01" min="0" inputmode="decimal" data-fid="${f.id}" data-field="max" value="${f.max ?? ''}" placeholder="–">
         ${pack ? '<span>€ je Packung</span>'
           : `<span>€ /</span><select data-fid="${f.id}" data-field="maxUnit">${['kg', 'l', 'Stk'].map(u => `<option ${unit === u ? 'selected' : ''}>${u}</option>`).join('')}</select>`}
-        ${f.type === 'group' ? `<a class="btn small" href="#/add/${enc(f.category)}${f.group ? '/' + enc(f.group) : ''}">Bearbeiten</a>` : ''}
-        <button class="btn small" data-act="favWish" data-fid="${f.id}">＋ Zettel</button>
-        <button class="btn small" data-act="favWish" data-fid="${f.id}" data-prio="1">❗ Zettel</button>
-        <button class="btn small danger" data-act="favDel" data-fid="${f.id}">Löschen</button></div>`;
+        </div><div class="fav-tools">
+        ${f.type === 'group' ? `<a class="btn small" href="#/add/${enc(f.category)}${f.group ? '/' + enc(f.group) : ''}">Auswahl bearbeiten</a>` : ''}
+        <button class="btn small danger" data-act="favDel" data-fid="${f.id}">Löschen</button></div></div>`;
+    }
+    if (open) {
       h += offerList(m, { limit: 200, sort: metricSort(f), metric: metricSort(f), isNew });
       m.forEach(o => seenNow.push(o.id));
     }
@@ -1070,8 +1078,9 @@ const onClick = {
   },
   favWish: el => {
     const f = S.favs.find(x => x.id === el.dataset.fid);
-    if (f) Li.addWish(f, favLabel(f).title, { prio: el.dataset.prio === '1' });
+    if (f) { Li.toggleFavWish(f, favLabel(f).title, el.dataset.prio === '1'); rerender(); }
   },
+  favSettings: el => { const id = el.dataset.fid; S.favSet.has(id) ? S.favSet.delete(id) : S.favSet.add(id); rerender(); },
   prioOffer: el => { Li.togglePrioOffer(S.byId.get(el.dataset.id)); rerender(); },
   pickGroup: el => {
     const cat = el.dataset.c, g = el.dataset.g || null;

@@ -453,6 +453,15 @@ function liDelete(it, undoText = 'Gelöscht') {
 const Li = {
   hasOffer: o => !!liOfferItem(o),
   isPrioOffer: o => !!liOfferItem(o)?.prio,
+  // offener Wunsch zu einem Favoriten (gleicher Filter)
+  favWish: f => liOpen().find(i => i.kind === 'wish' && i.fav && favSig(i.fav) === favSig(f)),
+  // ＋ / ❗ am Favoriten: hinzufügen; erneut ＋ = vom Zettel nehmen, erneut ❗ = Markierung umschalten
+  toggleFavWish(f, label, prio) {
+    const ex = this.favWish(f);
+    if (!ex) { this.addWish(f, label, { prio }); return; }
+    if (prio) { ex.prio = !ex.prio; put('item', ex); toast(ex.prio ? `❗ ${ex.name} ist wichtig` : `${ex.name}: nicht mehr wichtig`); return; }
+    liDelete(ex, 'Vom Zettel entfernt');
+  },
   // ❗ an der Angebotskarte: als wichtig hinzufügen bzw. Markierung umschalten (Eintrag bleibt auf dem Zettel)
   togglePrioOffer(o) {
     const ex = liOfferItem(o);
