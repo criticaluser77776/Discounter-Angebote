@@ -460,7 +460,7 @@ function liFavsPull() {
   const own = favOwner();
   if (!own) return false;
   const favs = [...R.fav.values()].filter(r => r.owner === own && !r.del).map(r => favCopy(r.fav))
-    .sort((a, b) => String(a.id).localeCompare(String(b.id)));
+    .sort((a, b) => (a.order ?? 1e9) - (b.order ?? 1e9) || String(a.id).localeCompare(String(b.id)));
   if (JSON.stringify(favs) === JSON.stringify(S.favs)) return false;
   S.favs = favs;
   save('favs', S.favs);

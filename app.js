@@ -69,6 +69,7 @@ const S = {
   f: Object.assign({ off: [], place: '', hideApp: false, hideOnline: true, onlyCurrent: false, hideNonFood: false, theme: 'auto' },
     load('filters', {})),
   favs: load('favs', []),
+  favSort: load('favSort', 'offers'),  // Favoriten: 'offers' = mit Angeboten zuerst, 'own' = eigene Reihenfolge
   seen: new Set(load('seen', [])),
 };
 
@@ -261,7 +262,14 @@ function searchFavNow() {
   return f;
 }
 
+// eigener Name (f.name) ersetzt den automatisch gebildeten Titel
 function favLabel(f) {
+  const L = favLabelAuto(f);
+  if (f.name) return { ...L, title: f.name };
+  return L;
+}
+
+function favLabelAuto(f) {
   switch (f.type) {
     case 'group': {
       const names = f.brands?.length ? f.brands.map(k => f.brandNames?.[k] || k || 'Ohne Marke').join(', ') : 'alle Marken';
@@ -553,7 +561,14 @@ function renderFavs() {
     view.innerHTML = h;
     return;
   }
-  const rows = favRows(vis).sort((a, b) => (b.m.length > 0) - (a.m.length > 0));
+  // Sortierung: Favoriten mit Angeboten zuerst (innerhalb in eigener Reihenfolge) oder ganz eigene Reihenfolge,
+  // die per Griff ⠿ verschiebbar ist
+  const own = S.favSort === 'own';
+  const rows = favRows(vis);
+  if (!own) rows.sort((a, b) => (b.m.length > 0) - (a.m.length > 0));
+  h += `<div class="sortbar"><span>${S.favs.length} Favorit${S.favs.length === 1 ? '' : 'en'}${own ? ' · zum Verschieben ⠿ ziehen' : ''}</span>
+    <div class="seg"><button class="${own ? '' : 'on'}" data-act="favSort" data-s="offers">Angebote zuerst</button>
+    <button class="${own ? 'on' : ''}" data-act="favSort" data-s="own">Eigene Reihenfolge</button></div></div>`;
   const seenNow = [];
   const isNew = o => !S.seen.has(o.id);
   for (const { f, m } of rows) {
@@ -565,7 +580,8 @@ function renderFavs() {
     const fresh = m.filter(isNew).length;
     const L = favLabel(f);
     const open = S.open.has(f.id);
-    h += `<section class="fav"><div class="fav-h" data-act="favOpen" data-fid="${f.id}">
+    h += `<section class="fav" data-fid="${f.id}"><div class="fav-h" data-act="favOpen" data-fid="${f.id}">
+      ${own ? '<span class="fav-drag" aria-label="Verschieben" title="Zum Verschieben ziehen">⠿</span>' : ''}
       <span style="font-size:22px">${L.icon}</span>
       <div class="t"><b>${esc(L.title)}</b><small>${esc(L.sub)}${pack ? ' · Packungspreis' : ''}${f.max ? ` · ${esc(maxLabel(f))}` : ''}</small></div>
       <div class="fav-r">${m.length ? `<span class="cnt">${m.length}</span>` : '<span class="none">kein Angebot</span>'}
@@ -575,6 +591,9 @@ function renderFavs() {
     if (open) {
       const unit = f.maxUnit || dominantUnit(m) || 'kg';
       h += `<div class="fav-tools">
+        <span>Name:</span><input class="fav-name" data-fid="${f.id}" data-field="name" value="${esc(f.name || '')}"
+          placeholder="${esc(favLabelAuto(f).title)}" autocomplete="off"></div>
+        <div class="fav-tools">
         <span>Vergleich:</span><span class="seg">
           <button class="${pack ? '' : 'on'}" data-act="favMetric" data-fid="${f.id}" data-m="unit">Grundpreis</button>
           <button class="${pack ? 'on' : ''}" data-act="favMetric" data-fid="${f.id}" data-m="price">Packungspreis</button></span></div>
@@ -1030,7 +1049,8 @@ const onClick = {
   },
   showWeak: () => { S.showWeak = true; rerender(); },
   searchFav: () => { toggleFav(searchFavNow()); rerender(); },
-  favOpen: el => { const id = el.dataset.fid; S.open.has(id) ? S.open.delete(id) : S.open.add(id); rerender(); },
+  favSort: el => { S.favSort = el.dataset.s; save('favSort', S.favSort); rerender(); },
+  favOpen: el => { if (Date.now() - (S.dragDone || 0) < 400) return; const id = el.dataset.fid; S.open.has(id) ? S.open.delete(id) : S.open.add(id); rerender(); },
   favMetric: el => {
     const f = S.favs.find(x => x.id === el.dataset.fid);
     if (!f) return;
@@ -1165,6 +1185,7 @@ document.addEventListener('change', e => {
       if (sel && !f.maxUnit) f.maxUnit = sel.value;
     }
     if (el.dataset.field === 'maxUnit') f.maxUnit = el.value;
+    if (el.dataset.field === 'name') f.name = el.value.trim() || undefined;  // leer = automatischer Name
     saveFavs();
     rerender();
     return;
@@ -1221,6 +1242,49 @@ $('#back').addEventListener('click', () => {
 window.addEventListener('hashchange', onRoute);
 window.addEventListener('popstate', () => { if (S.sheetOpen) hideSheet(); });
 document.addEventListener('keydown', e => { if (e.key === 'Escape' && S.sheetOpen) closeSheet(); });
+
+/* ---------- Favoriten verschieben (Drag & Drop am Griff ⠿) ---------- */
+
+(() => {
+  let drag = null;
+  view.addEventListener('pointerdown', e => {
+    const handle = e.target.closest('.fav-drag');
+    if (!handle || e.button > 0) return;
+    e.preventDefault();
+    const el = handle.closest('.fav');
+    drag = { el, id: e.pointerId, moved: false };
+    handle.setPointerCapture(e.pointerId);
+    el.classList.add('dragging');
+  });
+  view.addEventListener('pointermove', e => {
+    if (!drag || e.pointerId !== drag.id) return;
+    const y = e.clientY;
+    // am Rand automatisch scrollen
+    if (y < 90) window.scrollBy(0, -12);
+    else if (y > window.innerHeight - 110) window.scrollBy(0, 12);
+    const others = [...view.querySelectorAll('.fav')].filter(s => s !== drag.el);
+    const next = others.find(s => { const r = s.getBoundingClientRect(); return y < r.top + r.height / 2; });
+    if (next ? drag.el.nextElementSibling !== next : drag.el !== others[others.length - 1]?.nextElementSibling) {
+      if (next) next.before(drag.el); else others[others.length - 1]?.after(drag.el);
+      drag.moved = true;
+    }
+  });
+  const end = () => {
+    if (!drag) return;
+    const { el, moved } = drag;
+    drag = null;
+    el.classList.remove('dragging');
+    S.dragDone = Date.now();  // folgenden Klick (Auf-/Zuklappen) ignorieren
+    if (!moved) return;
+    const order = [...view.querySelectorAll('.fav')].map(s => s.dataset.fid);
+    S.favs.sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id));
+    S.favs.forEach((f, i) => { f.order = i; });
+    saveFavs();
+    rerender();
+  };
+  view.addEventListener('pointerup', end);
+  view.addEventListener('pointercancel', end);
+})();
 
 /* ---------- Start ---------- */
 

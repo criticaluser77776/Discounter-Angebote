@@ -420,3 +420,11 @@ pre.log {
 .li-mnote { padding: 4px 0 0; margin: 0; }
 .li-p2 { display: flex; flex-direction: column; align-items: flex-end; line-height: 1.15; }
 .li-p2 small { font-size: .74rem; font-weight: 400; color: var(--muted); }
+/* Favoriten: Griff zum Verschieben, Name */
+.fav-drag {
+  flex: none; width: 22px; margin-left: -6px; color: var(--muted); font-size: 18px; text-align: center;
+  cursor: grab; touch-action: none; user-select: none; -webkit-user-select: none;
+}
+.fav.dragging { outline: 2px solid var(--accent); box-shadow: 0 6px 20px rgba(0, 0, 0, .18); position: relative; z-index: 2; }
+.fav.dragging .fav-drag { cursor: grabbing; }
+.fav-tools .fav-name { flex: 1; min-width: 140px; padding: 4px 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); }
