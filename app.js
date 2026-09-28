@@ -414,6 +414,7 @@ function card(o, opts = {}) {
       <div class="acts">
         <button class="ic ${isProductFav(o) ? 'on' : ''}" data-act="star" data-id="${esc(o.id)}" aria-label="Produkt merken">★</button>
         <button class="ic add ${inList(o) ? 'on' : ''}" data-act="add" data-id="${esc(o.id)}" aria-label="Auf den Einkaufszettel">＋</button>
+        <button class="ic prio ${Li.isPrioOffer(o) ? 'on' : ''}" data-act="prioOffer" data-id="${esc(o.id)}" aria-label="Wichtig auf den Einkaufszettel">❗</button>
       </div>
     </div>
   </article>`;
@@ -604,6 +605,7 @@ function renderFavs() {
           : `<span>€ /</span><select data-fid="${f.id}" data-field="maxUnit">${['kg', 'l', 'Stk'].map(u => `<option ${unit === u ? 'selected' : ''}>${u}</option>`).join('')}</select>`}
         ${f.type === 'group' ? `<a class="btn small" href="#/add/${enc(f.category)}${f.group ? '/' + enc(f.group) : ''}">Bearbeiten</a>` : ''}
         <button class="btn small" data-act="favWish" data-fid="${f.id}">＋ Zettel</button>
+        <button class="btn small" data-act="favWish" data-fid="${f.id}" data-prio="1">❗ Zettel</button>
         <button class="btn small danger" data-act="favDel" data-fid="${f.id}">Löschen</button></div>`;
       h += offerList(m, { limit: 200, sort: metricSort(f), metric: metricSort(f), isNew });
       m.forEach(o => seenNow.push(o.id));
@@ -1068,8 +1070,9 @@ const onClick = {
   },
   favWish: el => {
     const f = S.favs.find(x => x.id === el.dataset.fid);
-    if (f) Li.addWish(f, favLabel(f).title);
+    if (f) Li.addWish(f, favLabel(f).title, { prio: el.dataset.prio === '1' });
   },
+  prioOffer: el => { Li.togglePrioOffer(S.byId.get(el.dataset.id)); rerender(); },
   pickGroup: el => {
     const cat = el.dataset.c, g = el.dataset.g || null;
     const ex = findFav({ type: 'group', category: cat, group: g });

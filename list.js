@@ -429,6 +429,12 @@ function liDelete(it, undoText = 'Gelöscht') {
 const Li = {
   hasOffer: o => !!liOfferItem(o),
   isPrioOffer: o => !!liOfferItem(o)?.prio,
+  // ❗ an der Angebotskarte: als wichtig hinzufügen bzw. Markierung umschalten (Eintrag bleibt auf dem Zettel)
+  togglePrioOffer(o) {
+    const ex = liOfferItem(o);
+    if (ex?.prio) { ex.prio = false; put('item', ex); toast(`${ex.name}: nicht mehr wichtig`); return; }
+    this.toggleOffer(o, true);
+  },
   openCount: () => liOpen().length,
   toggleOffer(o, prio = false) {
     const ex = liOfferItem(o);
