@@ -873,6 +873,7 @@ async function openDetail(id) {
       ${o.brand ? `<button class="btn" data-act="favBrandGroup" data-id="${esc(o.id)}">☆ ${esc(o.brand)} in ${esc(o.group)}</button>` : ''}
       <button class="btn ${gFav ? 'on' : ''}" data-act="favGroup" data-id="${esc(o.id)}">${gFav ? '★' : '☆'} ${esc(o.group === OTHER ? o.category : o.group)}</button>
       <button class="btn ${inList(o) ? 'on' : ''}" data-act="add" data-id="${esc(o.id)}">＋ Einkaufszettel</button>
+      ${Li.isPrioOffer(o) ? '' : `<button class="btn" data-act="addPrio" data-id="${esc(o.id)}">❗ Wichtig auf den Zettel</button>`}
     </div>
     <div class="hist" id="hist"><p class="muted">Preisverlauf wird geladen …</p></div>`);
   try {
@@ -1014,6 +1015,7 @@ const onClick = {
   open: el => openDetail(el.dataset.id),
   star: el => { toggleProductFav(S.byId.get(el.dataset.id)); rerender(); },
   add: el => { Li.toggleOffer(S.byId.get(el.dataset.id)); rerender(); },
+  addPrio: el => { Li.toggleOffer(S.byId.get(el.dataset.id), true); rerender(); },
   more: () => { S.limit += 120; rerender(); },
   sort: el => { S.sort = el.dataset.s; save('sort', S.sort); rerender(); },
   rt: el => {

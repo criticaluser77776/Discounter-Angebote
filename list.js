@@ -102,6 +102,7 @@ const LI = {
   wake: load('li.wake', true),
   doneOpen: false,
   draft: '',
+  prioNext: false,  // Schalter ❗ neben der Eingabe: nächster Eintrag wird als wichtig angelegt
   editId: null,
   lock: null,
   syncing: false, lastSync: null, syncErr: null,
@@ -391,8 +392,20 @@ function liAddFree(name, qty, unit, prio = false) {
 }
 
 function liAddText(text) {
-  const added = liSplit(text).map(p => liParse(p)).filter(p => p.name).map(p => liAddFree(p.name, p.qty, p.unit, p.prio));
+  const prio = liTakePrio();
+  const added = liSplit(text).map(p => liParse(p)).filter(p => p.name).map(p => liAddFree(p.name, p.qty, p.unit, p.prio || prio));
   return added.length;
+}
+
+// Schalter ❗ abfragen und zurücksetzen (gilt für genau eine Eingabe)
+function liTakePrio() {
+  const on = LI.prioNext;
+  if (on) {
+    LI.prioNext = false;
+    const b = $('#liPrioBtn');
+    if (b) { b.classList.remove('on'); b.setAttribute('aria-pressed', 'false'); }
+  }
+  return on;
 }
 
 const offerSnap = o => ({
@@ -415,16 +428,18 @@ function liDelete(it, undoText = 'Gelöscht') {
 // Schnittstelle für Angebotskarten, Favoriten und Detailansicht (app.js)
 const Li = {
   hasOffer: o => !!liOfferItem(o),
+  isPrioOffer: o => !!liOfferItem(o)?.prio,
   openCount: () => liOpen().length,
-  toggleOffer(o) {
+  toggleOffer(o, prio = false) {
     const ex = liOfferItem(o);
+    if (ex && prio && !ex.prio) { ex.prio = true; put('item', ex); toast(`❗ ${ex.name} als wichtig markiert`); return; }
     if (ex) { liDelete(ex, 'Vom Zettel entfernt'); return; }
     const name = `${o.brand ? o.brand + ' ' : ''}${o.name || o.title}`;
     const learned = R.learn.get(nkey(name));
     put('item', { id: liNewId(), kind: 'offer', name, qty: 1, unit: '', note: '', price: null, pm: null,
       cat: learned && !learned.del ? learned.cat : LI_OFFER_CAT[o.category] || 'sonstiges',
-      offer: offerSnap(o), done: false, dt: null, by: Cloud.name() });
-    toast('＋ Auf den Einkaufszettel');
+      offer: offerSnap(o), done: false, dt: null, by: Cloud.name(), prio });
+    toast(prio ? '❗ Wichtig auf den Einkaufszettel' : '＋ Auf den Einkaufszettel');
   },
   addWish(filter, label, parsed) {
     const { id, ...fav } = filter;
@@ -542,6 +557,8 @@ function renderShop() {
       <button class="icon-btn li-menu-btn" data-act="liMenu" aria-label="Menü">⋯</button></div>
     <form id="liForm" class="li-form" autocomplete="off">
       <input id="liIn" type="text" enterkeyhint="done" placeholder="Ich brauche …  z.B. 3 l Milch, 1,5 %" value="${esc(LI.draft)}">
+      <button type="button" id="liPrioBtn" class="btn li-prio-btn${LI.prioNext ? ' on' : ''}" data-act="liPrioNext"
+        aria-pressed="${LI.prioNext}" aria-label="Als wichtig hinzufügen" title="Nächsten Eintrag als wichtig hinzufügen">❗</button>
       <button class="btn primary" aria-label="Hinzufügen">＋</button></form>
     <div id="liSug" class="li-sug" hidden></div>
     <div class="li-tools"><span class="seg">
@@ -954,6 +971,12 @@ Object.assign(onClick, {
     liRefresh();
     liEditSheet(it);
   },
+  liPrioNext: el => {
+    LI.prioNext = !LI.prioNext;
+    el.classList.toggle('on', LI.prioNext);
+    el.setAttribute('aria-pressed', String(LI.prioNext));
+    $('#liIn')?.focus();
+  },
   liSort: el => { LI.sort = el.dataset.s; save('li.sort', LI.sort); liBody(); },
   liDoneOpen: () => { LI.doneOpen = !LI.doneOpen; liBody(); },
   liMenu: () => liMenuSheet(),
@@ -975,7 +998,7 @@ Object.assign(onClick, {
     if (!f) return;
     const parts = liSplit(LI.draft), last = liParse(parts.pop() || '');
     if (parts.length) liAddText(parts.join(' und '));
-    Li.addWish(f, favLabel(f).title, last);
+    Li.addWish(f, favLabel(f).title, { ...last, prio: last.prio || liTakePrio() });
     LI.draft = '';
     const inp = $('#liIn');
     if (inp) { inp.value = ''; inp.focus(); }
@@ -995,7 +1018,7 @@ Object.assign(onClick, {
   },
   liSugWish: el => {
     const c = el.dataset.c, g = el.dataset.g;
-    Li.addWish({ type: 'group', category: c, group: g, brands: [], brandOnly: false }, g);
+    Li.addWish({ type: 'group', category: c, group: g, brands: [], brandOnly: false }, g, { prio: liTakePrio() });
     LI.draft = '';
     const inp = $('#liIn');
     if (inp) inp.value = '';
