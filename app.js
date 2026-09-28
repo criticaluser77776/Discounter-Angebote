@@ -968,7 +968,7 @@ function detailPrices(o, old, d) {
   if (reg != null || !o.app_price) {
     const regUnit = reg != null && o.unit_price ? Math.round(reg * o.unit_price / o.price * 100) / 100 : null;
     const saving = reg != null ? reg - base : 0;
-    h += `<div class="pcol reg"><small>Regulärer Preis${old == null && reg != null ? ` (aus −${o.discount}% errechnet)` : ''}</small>
+    h += `<div class="pcol reg"><small>Regulärer Preis</small>
       <b>${reg != null ? `${old == null ? 'ca. ' : ''}${fmt(reg)} €` : '–'}</b>
       <small>${reg != null ? `${unit(regUnit)}${saving > 0.004 ? ` · Angebot spart ${fmt(saving)} €` : ''}` : 'vom Händler nicht angegeben'}</small></div>`;
   }
