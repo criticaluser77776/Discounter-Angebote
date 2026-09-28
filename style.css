@@ -456,3 +456,4 @@ pre.log {
 .prices-scroll::-webkit-scrollbar { display: none; }
 .prices-scroll .pcol { flex: 0 0 calc(46% - 5px); scroll-snap-align: start; }
 .prices-scroll::after { content: ""; flex: 0 0 6px; }
+.cat-head { font-size: .85rem; font-weight: 700; color: var(--text); text-transform: none; letter-spacing: 0; padding: 14px 2px 2px; }

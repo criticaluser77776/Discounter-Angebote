@@ -506,6 +506,29 @@ function renderCategory(cat, group) {
   view.innerHTML = h;
 }
 
+// Tab „Alle“: alle Angebote der gewählten Händler, nach Kategorie, darin nach Rabatt (höchster zuerst), sonst A–Z
+function renderAll() {
+  const rank = new Map(S.categories.map((c, i) => [c, i]));
+  const disc = o => (o.discount > 0 && o.discount < 100 ? o.discount : 0);
+  const list = visible().sort((a, b) => (rank.get(a.category) ?? 999) - (rank.get(b.category) ?? 999)
+    || disc(b) - disc(a) || (a.name || '').localeCompare(b.name || '', 'de'));
+  const sel = S.f.only.map(k => S.retailers[k]?.name || k);
+  let h = `<div class="head"><h2>🏷️ Alle Angebote</h2></div>
+    <div class="sortbar"><span>${list.length} Angebote · ${sel.length ? esc(sel.join(', ')) : 'alle Händler'}</span></div>`;
+  if (!list.length) { view.innerHTML = h + '<p class="empty">Keine passenden Angebote.</p>'; return; }
+  h += '<div class="list">';
+  let last = null;
+  for (const o of list.slice(0, S.limit)) {
+    if (o.category !== last) {
+      h += `<div class="unit-head cat-head">${ICONS[o.category] || '📦'} ${esc(o.category)}</div>`;
+      last = o.category;
+    }
+    h += card(o);
+  }
+  if (list.length > S.limit) h += `<button class="btn more-btn" data-act="more">Weitere ${list.length - S.limit} anzeigen</button>`;
+  view.innerHTML = h + '</div>';
+}
+
 function renderSearch() {
   const qt = qTokens(S.q);
   const res = [];
@@ -1013,7 +1036,7 @@ function route() {
 
 function render() {
   const r = route();
-  const tab = ['favs', 'add'].includes(r[0]) ? 'favs' : r[0] === 'list' ? 'list' : r[0] === 'more' ? 'more' : 'browse';
+  const tab = ['favs', 'add'].includes(r[0]) ? 'favs' : ['list', 'more', 'all'].includes(r[0]) ? r[0] : 'browse';
   document.querySelectorAll('.tabs a').forEach(a => a.classList.toggle('active', a.dataset.tab === tab));
   $('#back').hidden = !(S.q || r[0] === 'c' || r[0] === 'add');
   if (!S.loaded) return;
@@ -1024,6 +1047,7 @@ function render() {
   } else if (r[0] === 'add') renderPicker(r[1], r[2]);
   else if (tab === 'favs') renderFavs();
   else if (tab === 'list') renderShop();
+  else if (tab === 'all') renderAll();
   else renderMore();
   updateBadges();
 }
