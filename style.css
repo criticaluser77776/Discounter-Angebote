@@ -155,7 +155,10 @@ main { max-width: 1100px; margin: 0 auto; }
   display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical; overflow: hidden;
 }
 .tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 5px; }
-.tag { font-size: .72rem; padding: 1px 6px; border-radius: 5px; background: var(--surface-2); color: var(--muted); white-space: nowrap; }
+.tag {
+  font-size: .72rem; padding: 1px 6px; border-radius: 5px; background: var(--surface-2); color: var(--muted); white-space: nowrap;
+  max-width: 100%; overflow: hidden; text-overflow: ellipsis;  /* lange Hinweise (Rewe-Bonus) nicht über den Rand */
+}
 .tag.red { background: var(--red-soft); color: var(--red); font-weight: 700; }
 .tag.app { background: var(--amber-soft); color: var(--amber); font-weight: 600; }
 .tag.blue { background: var(--blue-soft); color: var(--blue); font-weight: 600; }
@@ -179,10 +182,16 @@ main { max-width: 1100px; margin: 0 auto; }
 .price.m-unit .p-unit, .price.m-pack .p-pack { font-size: 1.02rem; font-weight: 800; color: var(--accent); }
 .price .is-app, .price.m-unit .p-unit.is-app, .price.m-pack .p-pack.is-app { color: var(--amber); }
 /* Handy: Preisblock unter den Text, Knöpfe rechts daneben – Titel behalten die volle Breite */
+/* Preiszeile über die ganze Kartenbreite (auch unter dem Bild), Knöpfe rechts; wird es zu eng (große Schrift),
+   rutschen die Knöpfe in eine eigene Zeile statt über den Rand */
 @media (max-width: 520px) {
   .card { grid-template-columns: 64px 1fr; }
-  .card .side { grid-column: 2; flex-direction: row; align-items: flex-end; justify-content: space-between; text-align: left; }
+  .card .side {
+    grid-column: 1 / -1; flex-direction: row; flex-wrap: wrap; align-items: flex-end; justify-content: space-between;
+    gap: 6px 10px; text-align: left; min-width: 0;
+  }
   .card .price { justify-items: start; }
+  .card .acts { flex: none; margin-left: auto; }
 }
 .prices2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding: 10px 16px 6px; }
 .pcol { background: var(--surface); border-radius: var(--radius); padding: 10px 12px; box-shadow: var(--shadow); display: flex; flex-direction: column; gap: 2px; }
