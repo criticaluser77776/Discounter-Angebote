@@ -281,7 +281,7 @@ function favLabel(f) {
   return { icon: '★', title: '?', sub: '' };
 }
 
-function saveFavs() { save('favs', S.favs); updateBadges(); }
+function saveFavs() { save('favs', S.favs); liFavsPush(S.favs); updateBadges(); }
 const findFav = f => S.favs.find(x => favSig(x) === favSig(f));
 
 function toggleFav(f, labelForToast) {
@@ -745,13 +745,25 @@ function renderMore() {
     </div>
     ${Cloud.enabled ? `<div class="panel"><h3>Familie</h3>
       <label class="line">Dein Name <input class="filter-input" style="margin:0;width:auto;flex:1" data-set-name value="${esc(Cloud.name())}" placeholder="z.B. Anna"></label>
-      <p class="muted" style="margin:4px 0 8px;font-size:.85rem">Erscheint beim Einkaufszettel als „von …“ bei den anderen.</p>
+      <p class="muted" style="margin:4px 0 8px;font-size:.85rem">Erscheint beim Einkaufszettel als „von …“ bei den anderen.
+        Deine Favoriten werden zwischen allen Geräten mit demselben Namen abgeglichen.</p>
       <button class="btn small" data-act="logout">Familien-Code auf diesem Gerät entfernen</button></div>` : ''}
+    <div class="panel"><h3>Über die App</h3>
+      ${appVersionLine()}
+    </div>
     <div class="panel"><h3>Als App installieren</h3>
       <p class="muted" style="margin:0;font-size:.88rem">Android/Chrome: Menü ⋮ → „App installieren“.
       iPhone/Safari: Teilen → „Zum Home-Bildschirm“.</p>
     </div>`;
   loadStatus();
+}
+
+// Version und Zeitpunkt der veröffentlichten App (config.js, von tools/deploy_pages.py geschrieben)
+function appVersionLine() {
+  const v = window.APP_VERSION;
+  if (!v) return '<p class="muted" style="margin:0;font-size:.88rem">Lokale Fassung vom PC (start.bat)</p>';
+  const d = new Date(v.built).toLocaleString('de-DE', { dateStyle: 'medium', timeStyle: 'short' });
+  return `<p style="margin:0">Version <b>${esc(v.number)}</b> · aktualisiert am ${esc(d)} Uhr</p>`;
 }
 
 function renderStatus() {
@@ -1127,7 +1139,13 @@ document.addEventListener('dblclick', e => {
 
 document.addEventListener('change', e => {
   const el = e.target;
-  if ('setName' in el.dataset) { Cloud.setName(el.value); toast('Name gespeichert'); return; }
+  if ('setName' in el.dataset) {
+    Cloud.setName(el.value);
+    liFavsPush(S.favs);  // Favoriten unter dem neuen Namen abgleichen
+    Sync.run();
+    toast('Name gespeichert');
+    return;
+  }
   if (el.dataset.set) {
     const k = el.dataset.set;
     S.f[k] = el.type === 'checkbox' ? el.checked : el.value;
@@ -1239,7 +1257,7 @@ function showLogin(msg) {
     ${msg && msg !== 'Bitte Familien-Code eingeben' ? `<p class="err">${esc(msg)}</p>` : ''}
     <form id="loginForm">
       <label class="li-f">Familien-Code<input id="loginCode" autocomplete="off" autocapitalize="off" spellcheck="false" required></label>
-      <label class="li-f">Dein Name<input id="loginName" value="${esc(Cloud.name())}" placeholder="z.B. Anna" autocomplete="given-name" required></label>
+      <label class="li-f">Dein Name (auf allen eigenen Geräten gleich – dann werden deine Favoriten abgeglichen)<input id="loginName" value="${esc(Cloud.name())}" placeholder="z.B. Anna" autocomplete="given-name" required></label>
       <button class="btn primary">Freischalten</button>
     </form></div>`;
 }
@@ -1252,6 +1270,7 @@ document.addEventListener('submit', async e => {
   try {
     if (await Cloud.login($('#loginCode').value, $('#loginName').value)) {
       view.innerHTML = '<p class="loading">Lade Angebote …</p>';
+      liFavsPush(S.favs);
       await loadData();
       Sync.run();
     } else {

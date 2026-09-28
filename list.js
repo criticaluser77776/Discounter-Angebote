@@ -91,7 +91,7 @@ const LI_MEASURE = new Set(['g', 'kg', 'ml', 'l']);  // Mengenangabe = Gewicht/V
 
 /* ---------- Zustand & Speicher ---------- */
 
-const LI_KINDS = ['item', 'cat', 'learn', 'hist'];
+const LI_KINDS = ['item', 'cat', 'learn', 'hist', 'fav'];
 const R = Object.fromEntries(LI_KINDS.map(k => [k, new Map()]));
 const LI = {
   dirty: new Set(load('li.dirty', [])),
@@ -434,6 +434,38 @@ const Li = {
     toast(`＋ „${label}“ auf den Einkaufszettel`);
   },
 };
+
+/* ---------- Favoriten abgleichen ----------
+   Nur zwischen Geräten derselben Person (erkannt am eingegebenen Namen): Zeile 'fav' mit id "<name>:<Favorit-ID>".
+   app.js ruft liFavsPush bei jeder Änderung der Favoriten auf; beim Abgleich übernimmt liFavsPull die eigenen. */
+
+const favOwner = () => nkey(Cloud.name());
+const favCopy = f => JSON.parse(JSON.stringify(f));
+
+function liFavsPush(favs) {
+  const own = favOwner();
+  if (!Cloud.enabled || !Cloud.loggedIn() || !own) return;
+  const keep = new Set();
+  for (const f of favs) {
+    const id = `${own}:${f.id}`;
+    keep.add(id);
+    const cur = R.fav.get(id);
+    if (!cur || cur.del || JSON.stringify(cur.fav) !== JSON.stringify(f)) put('fav', { id, owner: own, fav: favCopy(f), del: false });
+  }
+  for (const [id, r] of R.fav) if (r.owner === own && !r.del && !keep.has(id)) put('fav', { ...r, del: true });
+}
+
+// eigene Favoriten aus den abgeglichenen Zeilen übernehmen; Ergebnis: ob sich etwas geändert hat
+function liFavsPull() {
+  const own = favOwner();
+  if (!own) return false;
+  const favs = [...R.fav.values()].filter(r => r.owner === own && !r.del).map(r => favCopy(r.fav))
+    .sort((a, b) => String(a.id).localeCompare(String(b.id)));
+  if (JSON.stringify(favs) === JSON.stringify(S.favs)) return false;
+  S.favs = favs;
+  save('favs', S.favs);
+  return true;
+}
 
 /* ---------- Preise & Anzeige ---------- */
 
@@ -836,7 +868,7 @@ const Sync = {
     if (!Cloud.enabled || !Cloud.loggedIn() || LI.syncing) return;
     LI.syncing = true;
     liSyncBadge();
-    let changed = false;
+    let changed = false, favChanged = false;
     try {
       // 1. eigene Änderungen senden (nur als erledigt markieren, wenn sich die Zeile inzwischen nicht geändert hat)
       const keys = [...LI.dirty];
@@ -860,6 +892,7 @@ const Sync = {
           if (local && (local.u || 0) >= (r.data.u || 0)) continue;
           R[r.kind].set(r.id, { ...r.data, del: r.deleted });
           changed = true;
+          if (r.kind === 'fav') favChanged = true;
         }
         if (got.length) LI.cursor = got[got.length - 1].updated_at;
         if (got.length < 1000) break;
@@ -875,6 +908,7 @@ const Sync = {
       LI.syncing = false;
       liSave();
       if (changed) { LI.hints.clear(); liRefresh(); }  // auch geänderte Zuordnungen anderer Geräte
+      if (favChanged && liFavsPull() && S.loaded && route()[0] !== 'list') rerender();
       liSyncBadge();
     }
   },
@@ -1159,4 +1193,5 @@ setInterval(() => { if (document.visibilityState === 'visible') Sync.run(); }, 2
 window.addEventListener('hashchange', liWake);
 
 liLoad();
+liFavsPush(S.favs);  // lokale Favoriten dieses Geräts einbringen (nur online und mit Namen)
 boot();
