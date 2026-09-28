@@ -510,14 +510,18 @@ function renderCategory(cat, group) {
 function renderAll() {
   const rank = new Map(S.categories.map((c, i) => [c, i]));
   const disc = o => (o.discount > 0 && o.discount < 100 ? o.discount : 0);
-  const list = visible().sort((a, b) => (rank.get(a.category) ?? 999) - (rank.get(b.category) ?? 999)
-    || disc(b) - disc(a) || (a.name || '').localeCompare(b.name || '', 'de'));
+  const byName = (a, b) => (a.name || '').localeCompare(b.name || '', 'de');
+  // „Top-Angebote“: nur ab 30 % Rabatt, nach Rabatt sortiert (ohne Kategorie-Gliederung)
+  const list = S.allTop
+    ? visible().filter(o => disc(o) >= 30).sort((a, b) => disc(b) - disc(a) || byName(a, b))
+    : visible().sort((a, b) => (rank.get(a.category) ?? 999) - (rank.get(b.category) ?? 999) || disc(b) - disc(a) || byName(a, b));
   const sel = S.f.only.map(k => S.retailers[k]?.name || k);
-  let h = `<div class="head"><h2>🏷️ Alle Angebote</h2></div>
-    <div class="sortbar"><span>${list.length} Angebote · ${sel.length ? esc(sel.join(', ')) : 'alle Händler'}</span></div>`;
+  let h = `<div class="head"><h2>🏷️ ${S.allTop ? 'Top-Angebote' : 'Alle Angebote'}</h2>
+      <button class="btn small ${S.allTop ? 'on' : ''}" data-act="allTop">🔥 Top-Angebote</button></div>
+    <div class="sortbar"><span>${list.length} Angebote${S.allTop ? ' ab 30 % Rabatt' : ''} · ${sel.length ? esc(sel.join(', ')) : 'alle Händler'}</span></div>`;
   // Schnellwahl: springt zur Kategorie (kein Filter)
   const cc = countBy(list, o => o.category);
-  const cats = [...new Set(list.map(o => o.category))];
+  const cats = S.allTop ? [] : [...new Set(list.map(o => o.category))];
   if (cats.length > 1) h += '<div class="chips scroll all-jump">' + cats.map(c =>
     `<button class="chip" data-act="allJump" data-c="${esc(c)}">${ICONS[c] || ''} ${esc(c)} <i>${cc[c]}</i></button>`).join('') + '</div>';
   if (!list.length) { view.innerHTML = h + '<p class="empty">Keine passenden Angebote.</p>'; return; }
@@ -528,7 +532,7 @@ function renderAll() {
   if (from > 0) h += `<button class="btn more-btn" data-act="allPrev">▲ ${from} Angebote davor anzeigen</button>`;
   let last = null;
   for (const o of list.slice(from, S.limit)) {
-    if (o.category !== last) {
+    if (!S.allTop && o.category !== last) {
       h += `<div class="unit-head cat-head" data-cat="${esc(o.category)}">${ICONS[o.category] || '📦'} ${esc(o.category)}</div>`;
       last = o.category;
     }
@@ -1198,6 +1202,7 @@ const onClick = {
   add: el => { Li.toggleOffer(S.byId.get(el.dataset.id)); rerender(); },
   addPrio: el => { Li.toggleOffer(S.byId.get(el.dataset.id), true); rerender(); },
   more: () => { S.limit += 120; rerender(); },
+  allTop: () => { S.allTop = !S.allTop; S.allFrom = 0; S.limit = 60; render(); window.scrollTo(0, 0); },
   allPrev: () => {
     // frühere Angebote oben einfügen, ohne dass die Ansicht springt
     const anchor = document.querySelector('.list .card');
