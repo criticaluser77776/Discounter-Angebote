@@ -1368,6 +1368,7 @@ async function loadData() {
     // feste Reihenfolge der Händler (auch für bereits hochgeladene Daten); unbekannte hinten anhängen
     const rank = k => { const i = RETAILER_ORDER.indexOf(k); return i < 0 ? 99 : i; };
     S.retailers = Object.fromEntries(Object.entries(j.retailers).sort(([a], [b]) => rank(a) - rank(b)));
+    if (S.retailers.aldi) S.retailers.aldi = { ...S.retailers.aldi, name: 'Aldi' };  // auch für ältere hochgeladene Daten
     S.categories = j.categories;
     S.groups = j.groups;
     S.places = j.places;
