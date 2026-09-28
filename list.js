@@ -681,7 +681,7 @@ function liBody() {
             <div class="li-t">${esc(x.name)}${liSimple() ? '' : `<small>${x.fav ? '★ Wunsch · ' : ''}${x.c || 1}× auf dem Zettel${x.b ? ` · ${x.b}× gekauft, zuletzt ${d(x.bought)}` : ` · zuletzt ${d(x.last)}`}</small>`}</div>
             <button class="ic add" data-act="liHistAdd" data-hid="${esc(x.id)}" aria-label="Wieder auf den Zettel">＋</button>
           </div></div>`;
-        }).join('') + (hist.length > 60 && !LI.histAll ? '<div class="li-done-acts"><button class="btn small" data-act="liHistAll">Alle anzeigen</button></div>' : '') : ''}</section>`;
+        }).join('') + (hist.length > 60 && !LI.histAll ? '<div class="li-done-acts"><button class="btn small" data-act="liHistAll" data-auto>Weitere werden geladen …</button></div>' : '') : ''}</section>`;
   }
   body.innerHTML = h;
   updateBadges();

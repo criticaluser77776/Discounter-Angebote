@@ -67,7 +67,7 @@ const S = {
   status: null, poll: null, wasRunning: false,
   sort: load('sort', 'unit'),
   f: Object.assign({ only: [], place: '', hideApp: false, hideOnline: true, onlyCurrent: false, hideNonFood: false, theme: 'auto' },
-    load('filters', {}), { off: undefined }),  // only = markierte Händler (leer = alle); altes „off“ verworfen
+    load('filters', {}), { off: undefined, only: [] }),  // only = markierte Händler (leer = alle), gilt nur bis zum Neustart
   favs: load('favs', []),
   favSort: load('favSort', 'offers'),  // Favoriten: 'offers' = mit Angeboten zuerst, 'own' = eigene Reihenfolge
   seen: new Set(load('seen', [])),
@@ -435,7 +435,7 @@ function offerList(list, opts = {}) {
     }
     h += card(o, opts);
   }
-  if (list.length > limit) h += `<button class="btn more-btn" data-act="more">Weitere ${list.length - limit} anzeigen</button>`;
+  if (list.length > limit) h += `<button class="btn more-btn" data-act="more" data-auto>Weitere ${list.length - limit} werden geladen …</button>`;
   return h + '</div>';
 }
 
@@ -525,7 +525,7 @@ function renderAll() {
     }
     h += card(o);
   }
-  if (list.length > S.limit) h += `<button class="btn more-btn" data-act="more">Weitere ${list.length - S.limit} anzeigen</button>`;
+  if (list.length > S.limit) h += `<button class="btn more-btn" data-act="more" data-auto>Weitere ${list.length - S.limit} werden geladen …</button>`;
   view.innerHTML = h + '</div>';
 }
 
@@ -1052,17 +1052,47 @@ function render() {
   updateBadges();
 }
 
+// Position in „Kategorien“ und „Alle“ merken (nur im Speicher, also bis zum Neustart der App):
+// Unterseite, Suche, Filter, geladene Menge und Scrollposition
+const tabOf = hash => {
+  const r = hash.replace(/^#\/?/, '').split('/').filter(Boolean);
+  return r[0] === 'all' ? 'all' : !r[0] || r[0] === 'c' ? 'browse' : null;
+};
+const tabMem = {};
+let lastHash = location.hash || '#/', restoring = null;
+
 function onRoute() {
-  S.limit = 60;
-  S.brands = new Set();
-  S.brandOnly = false;
+  const old = tabOf(lastHash);
+  if (old) tabMem[old] = { hash: lastHash, y: window.scrollY, limit: S.limit, brands: S.brands, brandOnly: S.brandOnly,
+    q: S.q, qFacet: S.qFacet, qBrands: new Set(S.qBrands), showWeak: S.showWeak };
+  lastHash = location.hash || '#/';
+  const m = restoring && restoring.hash === lastHash ? restoring : null;
+  restoring = null;
+  S.limit = m?.limit || 60;
+  S.brands = m?.brands || new Set();
+  S.brandOnly = m?.brandOnly || false;
   S.pickOpen = null;
   S.pickQ = '';
   const r = route();
-  if (S.q && r[0] && r[0] !== 'c') clearSearch(false);
+  if (m?.q) {
+    Object.assign(S, { q: m.q, qFacet: m.qFacet, qBrands: m.qBrands, showWeak: m.showWeak });
+    qInput.value = m.q;
+    $('#clearQ').hidden = false;
+  } else if (S.q && r[0] && r[0] !== 'c') clearSearch(false);
   render();
-  window.scrollTo(0, 0);
+  window.scrollTo(0, m?.y || 0);
 }
+
+// Tab-Leiste: zurück an die gemerkte Stelle, erneutes Tippen im selben Tab führt wie bisher zum Anfang
+document.querySelector('.tabs').addEventListener('click', e => {
+  const a = e.target.closest('a[data-tab]');
+  const t = a && (a.dataset.tab === 'browse' ? 'browse' : a.dataset.tab === 'all' ? 'all' : null);
+  const m = t && tabMem[t];
+  if (!m || tabOf(location.hash || '#/') === t) return;
+  e.preventDefault();
+  restoring = m;
+  if ((location.hash || '#/') === m.hash) onRoute(); else location.hash = m.hash;
+});
 
 function renderChips() {
   $('#retailerChips').innerHTML = Object.entries(S.retailers).map(([k, r]) =>
@@ -1101,6 +1131,19 @@ function toast(msg, action) {
   clearTimeout(toast.timer);
   toast.timer = setTimeout(() => { t.hidden = true; }, action ? 5000 : 2200);
 }
+
+// Endlos-Liste: „Weitere“-Knöpfe (data-auto) lösen selbst aus, sobald sie beim Scrollen in die Nähe kommen
+let autoBusy = false;
+function autoMore() {
+  if (autoBusy) return;
+  const b = [...document.querySelectorAll('[data-auto]')].find(x => x.getBoundingClientRect().top < window.innerHeight + 800);
+  if (!b) return;
+  autoBusy = true;
+  setTimeout(() => { b.click(); autoBusy = false; }, 0);
+}
+window.addEventListener('scroll', autoMore, { passive: true });
+new MutationObserver(() => { if (document.querySelector('[data-auto]')) setTimeout(autoMore, 50); })
+  .observe(document.body, { childList: true, subtree: true });
 
 function rerender() {
   const y = window.scrollY;
