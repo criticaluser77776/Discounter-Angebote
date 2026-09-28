@@ -1052,7 +1052,8 @@ function render() {
   const tab = ['favs', 'add'].includes(r[0]) ? 'favs' : ['list', 'more', 'all'].includes(r[0]) ? r[0] : 'browse';
   document.querySelectorAll('.tabs a').forEach(a => a.classList.toggle('active', a.dataset.tab === tab));
   $('#back').hidden = !(S.q || r[0] === 'c' || r[0] === 'add');
-  $('#retailerChips').hidden = tab === 'list';  // Händler-Filter spielen auf dem Zettel keine Rolle
+  $('header.top').hidden = tab === 'list';
+  document.body.classList.toggle('no-top', tab === 'list');  // Suche und Händler-Filter spielen auf dem Zettel keine Rolle
   if (!S.loaded) return;
   if (tab === 'browse') {
     if (S.q) renderSearch();
