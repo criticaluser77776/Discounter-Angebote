@@ -464,3 +464,4 @@ pre.log {
   color: var(--text); font-size: 20px; box-shadow: var(--shadow); cursor: pointer;
 }
 .to-top[hidden] { display: none; }
+#retailerChips[hidden] { display: none; }
