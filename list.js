@@ -392,7 +392,7 @@ function renderShop() {
       <button class="${LI.view === 'cat' ? 'on' : ''}" data-act="liView" data-v="cat">Kategorien</button>
       <button class="${LI.view === 'shop' ? 'on' : ''}" data-act="liView" data-v="shop">Händler</button>
       <button class="${LI.view === 'plain' ? 'on' : ''}" data-act="liView" data-v="plain">Liste</button></span>
-      <span id="liSync" class="li-sync"></span></div>
+      <button id="liSync" class="li-sync" data-act="liSyncInfo" hidden></button></div>
     <div id="liBody"></div>`;
   liBody();
   liSyncBadge();
@@ -481,13 +481,26 @@ function liRefresh() {
   liWake();
 }
 
+// Abgleich-Status als Symbol mit fester Breite (Text wechselt sonst bei jedem Abgleich und lässt die Seite
+// am Handy springen); Details per Tipp
+function liSyncState() {
+  const t = LI.lastSync ? new Date(LI.lastSync).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }) : '';
+  const n = LI.dirty.size;
+  if (LI.syncErr) return ['⚠', 'err', `Offline – ${n ? n + ' Änderung' + (n > 1 ? 'en werden' : ' wird') : 'Abgleich wird'} nachgeholt`];
+  if (n) return ['⟳', '', `${n} Änderung${n > 1 ? 'en' : ''} noch nicht abgeglichen`];
+  if (t) return ['✓', 'ok', `Abgeglichen um ${t}`];
+  return ['⟳', '', 'Wird abgeglichen …'];
+}
+
 function liSyncBadge() {
   const el = $('#liSync');
   if (!el || !Cloud.enabled) return;
-  const t = LI.lastSync ? new Date(LI.lastSync).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }) : '';
-  el.innerHTML = LI.syncing ? '⟳ gleicht ab …'
-    : LI.syncErr ? `<span class="err" title="${esc(LI.syncErr)}">⚠ offline – wird nachgeholt</span>`
-      : LI.dirty.size ? `⟳ ${LI.dirty.size} Änderung${LI.dirty.size > 1 ? 'en' : ''} ausstehend` : t ? `✓ abgeglichen ${t}` : '';
+  const [icon, cls, text] = liSyncState();
+  el.hidden = false;
+  if (el.textContent !== icon) el.textContent = icon;
+  el.className = 'li-sync ' + cls;
+  el.title = text;
+  el.setAttribute('aria-label', text);
 }
 
 /* ---------- Vorschläge beim Tippen ---------- */
@@ -807,6 +820,7 @@ Object.assign(onClick, {
     } catch { /* abgebrochen */ }
   },
   liSyncNow: () => { closeSheet(); Sync.run(); },
+  liSyncInfo: () => { toast(liSyncState()[2]); Sync.run(); },
   liCatMove: el => {
     const cats = liCats(), i = cats.findIndex(c => c.id === el.dataset.cid), j = i + Number(el.dataset.d);
     if (i < 0 || j < 0 || j >= cats.length) return;

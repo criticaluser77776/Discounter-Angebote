@@ -245,8 +245,8 @@ main { max-width: 1100px; margin: 0 auto; }
 .switch input { width: 18px; height: 18px; accent-color: var(--accent); }
 
 /* Einkaufszettel */
-.li-head { padding-bottom: 0; }
-.li-sum { font-size: .9rem; color: var(--muted); }
+.li-head { padding-bottom: 0; flex-wrap: nowrap; }
+.li-sum { font-size: .9rem; color: var(--muted); white-space: nowrap; }
 .li-sum b { color: var(--text); }
 .li-menu-btn { width: 36px; height: 36px; font-size: 20px; }
 .li-form { display: flex; gap: 8px; padding: 10px 16px 0; position: relative; }
@@ -265,8 +265,13 @@ main { max-width: 1100px; margin: 0 auto; }
 }
 .li-sug button:first-child { border-top: 0; }
 .li-sug i { margin-left: auto; font-style: normal; font-size: .78rem; color: var(--muted); white-space: nowrap; }
-.li-tools { display: flex; align-items: center; gap: 10px; padding: 10px 16px 0; flex-wrap: wrap; }
-.li-sync { font-size: .78rem; color: var(--muted); }
+.li-tools { display: flex; align-items: center; gap: 10px; padding: 10px 16px 0; }
+.li-sync {
+  margin-left: auto; flex: none; width: 28px; height: 28px; border-radius: 50%; border: 0; padding: 0;
+  background: none; color: var(--muted); font-size: .95rem; line-height: 28px; text-align: center;
+}
+.li-sync.ok { color: var(--accent); }
+.li-sync.err { color: var(--red); }
 .li-sortbar { display: flex; align-items: center; gap: 8px; padding: 10px 16px 0; font-size: .85rem; color: var(--muted); }
 .li-group { margin: 10px 16px; background: var(--surface); border-radius: var(--radius); box-shadow: var(--shadow); overflow: hidden; }
 .li-group h3 {
