@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Angebote</title>
+<meta name="description" content="Wochenangebote der Discounter und Supermärkte in der Region, vergleichbar nach Grundpreis.">
+<meta name="theme-color" content="#1f7a4d">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="top">
+  <div class="bar">
+    <button id="back" class="icon-btn" hidden aria-label="Zurück">‹</button>
+    <label class="search">
+      <span aria-hidden="true">🔍</span>
+      <input id="q" type="search" placeholder="Suchen: Butter, Kaffee, Jacobs …" autocomplete="off" enterkeyhint="search">
+      <button id="clearQ" type="button" hidden aria-label="Suche löschen">×</button>
+    </label>
+  </div>
+  <div id="retailerChips" class="chips scroll" role="toolbar" aria-label="Händler"></div>
+</header>
+
+<main id="view" aria-live="polite"><p class="loading">Lade Angebote …</p></main>
+
+<div id="sheet" class="sheet" hidden>
+  <div class="sheet-backdrop" data-act="closeSheet"></div>
+  <div class="sheet-body" role="dialog" aria-modal="true"></div>
+</div>
+
+<nav class="tabs">
+  <a href="#/" data-tab="browse"><span>🗂️</span>Kategorien</a>
+  <a href="#/favs" data-tab="favs"><span>★</span>Favoriten<b id="favBadge" hidden></b></a>
+  <a href="#/list" data-tab="list"><span>📝</span>Zettel<b id="listBadge" hidden></b></a>
+  <a href="#/more" data-tab="more"><span>⚙️</span>Mehr</a>
+</nav>
+<div id="toast" class="toast" hidden></div>
+<script src="config.js"></script>
+<script src="cloud.js" defer></script>
+<script src="app.js" defer></script>
+<script src="list.js" defer></script>
+</body>
+</html>

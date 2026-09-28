@@ -1,0 +1,934 @@
+'use strict';
+/* Einkaufszettel (Tab „Zettel“)
+   - Einträge: frei („3 l Milch, 1,5 %“), konkretes Angebot oder Wunsch (Filter -> günstigstes aktuelles Angebot)
+   - Menge + Einheit, Notiz, Kategorie (automatisch, änderbar, wird je Name gemerkt), Preis (aus Angebot oder manuell)
+   - eigene Einkaufs-Kategorien mit Symbol/Farbe in Laden-Reihenfolge; Ansicht nach Kategorie oder Händler
+   - „zuletzt abgehakt“, Wischgesten (rechts = abhaken, links = löschen), Rückgängig, Bildschirm bleibt an
+   - Abgleich über Supabase (cloud.js): jede Zeile (Eintrag, Kategorie, Gelerntes, Historie) trägt ihre
+     Änderungszeit u; neuere Stände gewinnen, gelöscht wird per del-Markierung. */
+
+/* ---------- Kategorien, Einheiten, Schlagwörter ---------- */
+
+const LI_DEFAULT_CATS = [
+  ['obst', 'Obst & Gemüse', '🥦', '#43a047'], ['brot', 'Brot & Backwaren', '🥖', '#c68a3a'],
+  ['kuehl', 'Milch, Eier & Kühlregal', '🥛', '#3d9ad1'], ['kaese', 'Käse', '🧀', '#d4a200'],
+  ['wurst', 'Wurst & Aufschnitt', '🥓', '#d35d6e'], ['fleisch', 'Fleisch & Fisch', '🥩', '#c0392b'],
+  ['tk', 'Tiefkühl', '🧊', '#4aa8d8'], ['vorrat', 'Nudeln, Reis & Konserven', '🥫', '#b9770e'],
+  ['backen', 'Backen, Öl & Gewürze', '🧂', '#a0826d'], ['fruehstueck', 'Frühstück & Aufstrich', '🍯', '#e67e22'],
+  ['suess', 'Süßes & Snacks', '🍫', '#8e5a3c'], ['kaffee', 'Kaffee & Tee', '☕', '#6d4c41'],
+  ['getraenke', 'Getränke', '🥤', '#16a085'], ['alkohol', 'Bier, Wein & Spirituosen', '🍷', '#8e44ad'],
+  ['drogerie', 'Drogerie & Pflege', '🧴', '#d670a8'], ['haushalt', 'Haushalt & Reinigung', '🧽', '#7f8c8d'],
+  ['baby', 'Baby & Kind', '🍼', '#e8a0a0'], ['tier', 'Tierbedarf', '🐾', '#a1887f'],
+  ['sonstiges', 'Sonstiges', '📦', '#95a5a6'],
+];
+
+// Angebots-Kategorien (Backend) -> Einkaufs-Kategorien
+const LI_OFFER_CAT = {
+  'Obst & Gemüse': 'obst', 'Fleisch & Geflügel': 'fleisch', 'Wurst & Aufschnitt': 'wurst', 'Fisch & Meeresfrüchte': 'fleisch',
+  'Milch & Molkerei': 'kuehl', 'Käse': 'kaese', 'Brot & Backwaren': 'brot', 'Tiefkühl': 'tk', 'Vorrat & Konserven': 'vorrat',
+  'Frühstück & Aufstrich': 'fruehstueck', 'Süßes & Snacks': 'suess', 'Kaffee & Tee': 'kaffee', 'Getränke': 'getraenke',
+  'Bier': 'alkohol', 'Wein & Sekt': 'alkohol', 'Spirituosen': 'alkohol', 'Drogerie & Pflege': 'drogerie',
+  'Baby & Kind': 'baby', 'Haushalt & Reinigung': 'haushalt', 'Tierbedarf': 'tier', 'Non-Food': 'sonstiges',
+  'Sonstiges': 'sonstiges',
+};
+
+// Schlagwörter für freie Einträge; Reihenfolge = Priorität („Milchschokolade“ ist Süßes, nicht Milch).
+// Wort: kommt irgendwo vor · ^Wort: Wortanfang · =Wort: ganzes Wort
+const LI_WORDS = [
+  ['obst', 'wassermelone'],
+  ['tier', 'katzen hunde tierfutter vogelfutter leckerli whiskas felix pedigree frolic sheba katzenstreu'],
+  ['baby', 'windel pampers babynahrung ^brei hipp milupa aptamil schnuller'],
+  ['tk', 'tiefkühl =tk pizza fischstäbchen =eis eiscreme speiseeis pommes kroketten rahmspinat gefrier magnum cornetto schlemmerfilet'],
+  ['alkohol', '^bier pils weizenbier hefeweizen radler =alster =helles kölsch =wein rotwein weißwein =rosé ^sekt prosecco likör ' +
+    'schnaps =korn wodka vodka whisky =rum =gin aperol jägermeister sangria glühwein cider cidre weinbrand ouzo tequila ' +
+    'amaretto riesling merlot dornfelder chardonnay grauburgunder'],
+  ['getraenke', 'wasser ^saft säfte schorle =limo limonade ^cola fanta sprite eistee sprudel energy smoothie nektar tonic ' +
+    'apfelsaft orangensaft multivitamin'],
+  ['suess', 'schoko praline bonbon gummibär ^gummi haribo ^chips flips cracker salzstangen nüsse ^erdnüsse keks popcorn riegel ' +
+    'kaugummi lakritz ^waffel muffin milka ritter sport twix snickers =mars studentenfutter'],
+  ['kaffee', 'kaffee espresso cappuccino kapseln =pads =tee früchtetee kräutertee schwarztee grüntee teebeutel kakao'],
+  ['fruehstueck', 'marmelade konfitüre ^honig nutella aufstrich müsli cornflakes haferflocken flakes porridge erdnussbutter'],
+  ['backen', '^mehl ^zucker backpulver ^hefe vanillezucker ^salz pfeffer gewürz paprikapulver ^zimt =öl olivenöl ' +
+    'sonnenblumenöl rapsöl ^essig puderzucker speisestärke backmischung gelatine streusel'],
+  ['vorrat', 'nudeln spaghetti ^penne fusilli lasagne ^reis couscous bulgur linsen bohnen kichererbsen konserve ' +
+    'tomatenmark passierte ketchup ^mayo ^senf brühe bouillon suppe ^soße ^sauce pesto =mais thunfisch sauerkraut ' +
+    'gewürzgurken essiggurken oliven ravioli fertiggericht kokosmilch'],
+  ['kaese', 'käse gouda emmentaler mozzarella ^feta parmesan camembert ^brie halloumi ricotta leerdammer cheddar'],
+  ['kuehl', 'milch joghurt jogurt ^quark butter sahne schmand crème fraîche creme fraiche =eier =ei margarine skyr ' +
+    'pudding kefir ^tofu hummus tortellini gnocchi blätterteig pizzateig mascarpone'],
+  ['wurst', 'wurst salami schinken aufschnitt lyoner mortadella wiener ^speck bacon kassler'],
+  ['fleisch', 'fleisch ^hack hähnchen ^huhn hühner ^pute schnitzel steak braten gulasch filet kotelett ^rind ^schwein ' +
+    '^lamm ^ente =gans fisch lachs forelle garnelen shrimps kabeljau seelachs hering chicken nuggets frikadelle'],
+  ['brot', '^brot brötchen baguette toast croissant brezel laugen ciabatta kuchen torte zwieback knäckebrot wraps ' +
+    'tortilla semmel schrippe'],
+  ['obst', 'äpfel ^apfel birne banane orange mandarine clementine zitrone limette traube erdbeer himbeer heidelbeer blaubeer beere ' +
+    'kirsche pfirsich nektarine pflaume melone ananas mango =kiwi avocado ^obst gemüse salat tomate gurke paprika zucchini ' +
+    'aubergine karotte möhre kartoffel zwiebel knoblauch ^lauch porree brokkoli broccoli blumenkohl ^kohl rotkohl ' +
+    'weißkohl spinat champignon pilze radieschen sellerie ingwer kräuter petersilie schnittlauch basilikum rucola ' +
+    'feldsalat spargel kürbis'],
+  ['drogerie', 'shampoo duschgel seife zahnpasta zahncreme zahnbürste =deo deodorant creme lotion rasier binden tampons ' +
+    'taschentücher watte pflaster haargel haarspray sonnencreme nivea feuchttücher'],
+  ['haushalt', 'spülmittel spültabs waschmittel weichspüler reiniger putzmittel schwamm müllbeutel alufolie frischhaltefolie ' +
+    'backpapier klopapier toilettenpapier küchenrolle küchentücher servietten batterien glühbirne kerzen teelichter ' +
+    'entkalker =wc allzweck spülmaschine lappen handschuhe zewa'],
+];
+const liWordRules = LI_WORDS.map(([cat, words]) => [cat, words.split(' ').map(w => {
+  const mode = w[0] === '^' || w[0] === '=' ? w[0] : '';
+  return { mode, t: norm(mode ? w.slice(1) : w).replace(/[^a-z0-9]+/g, ' ').trim() };
+})]);
+
+// Einheiten und Schreibweisen bei der Eingabe
+const LI_UNITS = [
+  ['Stk', 'stk stck stuck st'], ['Pck', 'pck pack packung packungen pkg pckg'], ['g', 'g gr gramm'],
+  ['kg', 'kg kilo kilogramm'], ['ml', 'ml'], ['l', 'l ltr liter'], ['Fl', 'fl flasche flaschen'], ['Dose', 'dose dosen'],
+  ['Glas', 'glas glaser'], ['Becher', 'becher'], ['Bund', 'bund'], ['Kasten', 'kasten kiste kisten'],
+  ['Beutel', 'beutel btl'], ['Rolle', 'rolle rollen'], ['Netz', 'netz netze'], ['Tafel', 'tafel tafeln'],
+  ['Schale', 'schale schalen'],
+];
+const LI_UNIT_MAP = {};
+for (const [u, aliases] of LI_UNITS) for (const a of aliases.split(' ')) LI_UNIT_MAP[a] = u;
+const LI_MEASURE = new Set(['g', 'kg', 'ml', 'l']);  // Mengenangabe = Gewicht/Volumen, Preis nicht multiplizieren
+
+/* ---------- Zustand & Speicher ---------- */
+
+const LI_KINDS = ['item', 'cat', 'learn', 'hist'];
+const R = Object.fromEntries(LI_KINDS.map(k => [k, new Map()]));
+const LI = {
+  dirty: new Set(load('li.dirty', [])),
+  cursor: load('li.cursor', null),
+  view: load('li.view', 'cat'),
+  sort: load('li.sort', 'cat'),   // Sortierung der Ansicht „Liste“
+  prices: load('li.prices', true),
+  wake: load('li.wake', true),
+  doneOpen: false,
+  draft: '',
+  editId: null,
+  lock: null,
+  syncing: false, lastSync: null, syncErr: null,
+  suppress: 0,
+  hints: new Map(), hintsFor: null,
+};
+
+// streng steigende Zeit-ID (Reihenfolge des Hinzufügens) + Zufallsteil gegen Gleichstand zwischen Geräten
+let liLastId = 0;
+function liNewId() {
+  liLastId = Math.max(Date.now(), liLastId + 1);
+  return liLastId.toString(36) + Math.random().toString(36).slice(2, 7);
+}
+const nkey = s => norm(s).replace(/[^a-z0-9]+/g, ' ').trim();
+
+function liSave() {
+  save('li.rows', Object.fromEntries(LI_KINDS.map(k => [k, [...R[k].values()]])));
+  save('li.dirty', [...LI.dirty]);
+}
+
+// Änderung merken: Zeitstempel, zum Abgleich vormerken, speichern
+function put(kind, obj) {
+  obj.u = Math.max(Date.now(), (obj.u || 0) + 1);
+  R[kind].set(obj.id, obj);
+  LI.dirty.add(kind + '|' + obj.id);
+  liSave();
+  Sync.soon();
+}
+
+function liLoad() {
+  const d = load('li.rows', null);
+  if (d) for (const k of LI_KINDS) for (const o of d[k] || []) R[k].set(o.id, o);
+  // Standard-Kategorien (u = 1: jede Änderung eines Geräts ist neuer)
+  LI_DEFAULT_CATS.forEach(([id, name, emoji, color], i) => {
+    if (!R.cat.has(id)) R.cat.set(id, { id, name, emoji, color, order: i * 10, hidden: false, u: 1 });
+  });
+  if (!d) liMigrate();
+  // endgültig löschen: seit 60 Tagen gelöschte, bereits abgeglichene Einträge
+  const old = Date.now() - 60 * 864e5;
+  for (const [id, it] of R.item) if (it.del && it.u < old && !LI.dirty.has('item|' + id)) R.item.delete(id);
+  liSave();
+}
+
+// Übernahme des bisherigen Zettels (ap.list)
+function liMigrate() {
+  for (const it of load('list', [])) {
+    const base = { id: liNewId(), qty: it.qty || 1, unit: '', note: '', price: null, pm: null, done: !!it.done, dt: null, by: '' };
+    if (it.kind === 'offer') {
+      R.item.set(base.id, {
+        ...base, kind: 'offer', name: `${it.brand ? it.brand + ' ' : ''}${it.title}`, cat: liGuess(it.title),
+        offer: { id: it.offerId, retailer: it.retailer, brand: it.brand, title: it.title, price: it.price,
+          unit_price: it.unit_price, unit: it.unit, valid_to: it.valid_to, app: it.app || '' }, u: Date.now(),
+      });
+    } else if (it.kind === 'wish') {
+      R.item.set(base.id, { ...base, kind: 'wish', name: it.label, fav: it.fav,
+        cat: LI_OFFER_CAT[it.fav?.category] || liGuess(it.label), u: Date.now() });
+    }
+    LI.dirty.add('item|' + base.id);
+  }
+}
+
+const liItems = () => [...R.item.values()].filter(i => !i.del);
+const liOpen = () => liItems().filter(i => !i.done);
+const liCats = () => [...R.cat.values()].filter(c => !c.del).sort((a, b) => a.order - b.order || a.name.localeCompare(b.name));
+function catInfo(id) {
+  const c = R.cat.get(id);
+  if (c && !c.del) return c;
+  return R.cat.get('sonstiges') || { id: 'sonstiges', name: 'Sonstiges', emoji: '📦', color: '#95a5a6', order: 9999 };
+}
+
+/* ---------- Erkennen: Menge, Kategorie ---------- */
+
+const toNum = s => s === '½' ? 0.5 : s === '¼' ? 0.25 : Number(String(s).replace(',', '.'));
+const LI_NUM = '(\\d+(?:[.,]\\d+)?|½|¼)';
+const LI_RX = {
+  times: new RegExp(`^${LI_NUM}\\s*(?:x|×|\\*)\\s*(.+)$`, 'i'),
+  unitFirst: new RegExp(`^${LI_NUM}\\s*([A-Za-zÄÖÜäöüß]+)\\.?\\s+(.+)$`),
+  numFirst: new RegExp(`^${LI_NUM}\\s+(.+)$`),
+  numLast: new RegExp(`^(.+?)\\s+${LI_NUM}\\s*([A-Za-zÄÖÜäöüß]*)\\.?$`),
+};
+
+// "3 l Milch, 1,5 %" -> {name: "Milch, 1,5 %", qty: 3, unit: "l"}; Text hinter einem Komma gehört zum Namen
+function liParse(text) {
+  let s = text.trim(), extra = '';
+  const cm = s.match(/(?<!\d),|,(?=\s)/);
+  if (cm) { extra = s.slice(cm.index + 1).trim(); s = s.slice(0, cm.index).trim(); }
+  let qty = null, unit = '', m;
+  const u = w => LI_UNIT_MAP[norm(w)];
+  if ((m = s.match(LI_RX.times))) { qty = toNum(m[1]); s = m[2]; }
+  else if ((m = s.match(LI_RX.unitFirst)) && u(m[2])) { qty = toNum(m[1]); unit = u(m[2]); s = m[3]; }
+  else if ((m = s.match(LI_RX.numFirst))) { qty = toNum(m[1]); s = m[2]; }
+  else if ((m = s.match(LI_RX.numLast)) && (!m[3] || u(m[3]))) { s = m[1]; qty = toNum(m[2]); unit = m[3] ? u(m[3]) : ''; }
+  if (qty !== null && !(qty > 0)) qty = null;
+  return { name: (s + (extra ? ', ' + extra : '')).trim(), qty, unit };
+}
+const liSplit = text => text.split(/\s+und\s+|\s*;\s*|\s*\n\s*|\s+\+\s+/i).map(s => s.trim()).filter(Boolean);
+
+function liWordCat(name) {
+  const text = ' ' + nkey(name) + ' ';
+  for (const [cat, words] of liWordRules) {
+    for (const w of words) {
+      if (w.mode === '^' ? text.includes(' ' + w.t) : w.mode === '=' ? text.includes(' ' + w.t + ' ') : text.includes(w.t)) return cat;
+    }
+  }
+  return null;
+}
+
+// passende aktuelle Angebote zu einem freien Eintrag (für Hinweis und Kategorie);
+// mit Kategorie nur Angebote dieser Einkaufs-Kategorie („Milch“ im Kühlregal, nicht Milchschokolade)
+function liMatches(name, cat) {
+  if (!S.loaded) return [];
+  if (LI.hintsFor !== S.offers) { LI.hints.clear(); LI.hintsFor = S.offers; }
+  const k = nkey(name) + '|' + (cat || '');
+  if (!LI.hints.has(k)) {
+    const qt = qTokens(name);
+    let m = qt.length ? visible().filter(o => matchQuery(o, qt)?.strong) : [];
+    if (cat && cat !== 'sonstiges') m = m.filter(o => (LI_OFFER_CAT[o.category] || 'sonstiges') === cat);
+    // genaueste Stufe verwenden: Wort = Produktgruppe, sonst ganzes Wort im Namen, sonst alle Treffer
+    const word = (s, t) => (s + ' ').includes(' ' + t + ' ');
+    const inGroup = m.filter(o => qt.every(t => word(spaced(norm(o.group)), t)));
+    const inName = m.filter(o => qt.every(t => word(o._ts, t)));
+    LI.hints.set(k, sortOffers(inGroup.length ? inGroup : inName.length ? inName : m, 'unit'));
+  }
+  return LI.hints.get(k);
+}
+
+function liGuess(name) {
+  const learned = R.learn.get(nkey(name));
+  const ok = id => id && R.cat.has(id) && !R.cat.get(id).del;
+  if (learned && !learned.del && ok(learned.cat)) return learned.cat;
+  const w = liWordCat(name);
+  if (ok(w)) return w;
+  const c = countBy(liMatches(name).slice(0, 20), o => LI_OFFER_CAT[o.category] || 'sonstiges');
+  const best = Object.keys(c).sort((a, b) => c[b] - c[a])[0];
+  return ok(best) ? best : 'sonstiges';
+}
+
+/* ---------- Einträge ändern ---------- */
+
+function liRemember(it) {
+  const k = nkey(it.name);
+  if (!k) return;
+  const h = R.hist.get(k) || { id: k, c: 0 };
+  Object.assign(h, { name: it.name, c: (h.c || 0) + 1, cat: it.cat, last: Date.now(), del: false });
+  put('hist', h);
+}
+
+function liAddFree(name, qty, unit) {
+  const k = nkey(name);
+  const ex = liItems().find(i => nkey(i.name) === k);
+  if (ex) {
+    if (ex.done) {
+      Object.assign(ex, { done: false, dt: null });
+      if (qty) Object.assign(ex, { qty, unit });
+      toast(`„${ex.name}“ wieder auf dem Zettel`);
+    } else {
+      if (!qty) ex.qty = (ex.qty || 1) + 1;
+      else if ((unit || '') === (ex.unit || '')) ex.qty = (ex.qty || (unit ? 0 : 1)) + qty;
+      else Object.assign(ex, { qty, unit });
+      toast(`„${ex.name}“ ist schon auf dem Zettel – Menge erhöht`);
+    }
+    put('item', ex);
+    liRemember(ex);
+    return ex;
+  }
+  const it = { id: liNewId(), kind: 'free', name, qty, unit: unit || '', note: '', cat: liGuess(name),
+    price: null, pm: null, done: false, dt: null, by: Cloud.name() };
+  put('item', it);
+  liRemember(it);
+  return it;
+}
+
+function liAddText(text) {
+  const added = liSplit(text).map(p => liParse(p)).filter(p => p.name).map(p => liAddFree(p.name, p.qty, p.unit));
+  return added.length;
+}
+
+const offerSnap = o => ({
+  id: o.id, retailer: o.retailer, brand: o.brand, title: o.name || o.title, price: o.ep, unit_price: o.eu,
+  unit: o.unit, valid_to: o.valid_to, app: o.ea ? appName(o) : '', category: o.category,
+});
+const liOfferItem = o => liOpen().find(i => i.kind === 'offer' && i.offer?.id === o.id);
+
+function liSetDone(it, done) {
+  Object.assign(it, { done, dt: done ? Date.now() : null });
+  put('item', it);
+}
+
+function liDelete(it, undoText = 'Gelöscht') {
+  it.del = true;
+  put('item', it);
+  toast(`${undoText}: ${it.name}`, { label: 'Rückgängig', fn: () => { it.del = false; put('item', it); liRefresh(); } });
+}
+
+// Schnittstelle für Angebotskarten, Favoriten und Detailansicht (app.js)
+const Li = {
+  hasOffer: o => !!liOfferItem(o),
+  openCount: () => liOpen().length,
+  toggleOffer(o) {
+    const ex = liOfferItem(o);
+    if (ex) { liDelete(ex, 'Vom Zettel entfernt'); return; }
+    const name = `${o.brand ? o.brand + ' ' : ''}${o.name || o.title}`;
+    const learned = R.learn.get(nkey(name));
+    put('item', { id: liNewId(), kind: 'offer', name, qty: 1, unit: '', note: '', price: null, pm: null,
+      cat: learned && !learned.del ? learned.cat : LI_OFFER_CAT[o.category] || 'sonstiges',
+      offer: offerSnap(o), done: false, dt: null, by: Cloud.name() });
+    toast('＋ Auf den Einkaufszettel');
+  },
+  addWish(filter, label) {
+    const { id, ...fav } = filter;
+    put('item', { id: liNewId(), kind: 'wish', name: label, fav, qty: 1, unit: '', note: '', price: null, pm: null,
+      cat: LI_OFFER_CAT[fav.category] || liGuess(label), done: false, dt: null, by: Cloud.name() });
+    toast(`＋ „${label}“ auf den Einkaufszettel`);
+  },
+};
+
+/* ---------- Preise & Anzeige ---------- */
+
+function liBest(it) {
+  if (it.kind !== 'wish' || !S.loaded) return null;
+  return sortOffers(visible().filter(o => favMatch(it.fav, o)), metricSort(it.fav))[0] || null;
+}
+
+// Preis des Eintrags: manuell > Angebot > günstigstes Angebot zum Wunsch; × Menge außer bei Gewicht/Volumen
+function liPrice(it, best) {
+  let each = null, app = false;
+  if (it.kind === 'offer') { each = it.offer.price; app = !!it.offer.app; }
+  else if (best) { each = best.ep; app = best.ea; }
+  if (it.price != null) { each = it.price; app = false; }
+  if (each == null) return null;
+  const mult = it.pm === 'fixed' || LI_MEASURE.has(it.unit) ? 1 : (it.qty || 1);
+  return { total: Math.round(each * mult * 100) / 100, app };
+}
+
+const fmtQty = q => Number.isInteger(q) ? String(q) : q.toLocaleString('de-DE', { maximumFractionDigits: 2 });
+function qtyLabel(it) {
+  if (!it.qty) return it.unit || '';
+  return it.unit ? `${fmtQty(it.qty)} ${it.unit}` : `${fmtQty(it.qty)}×`;
+}
+
+function liRetailerOf(it, best) {
+  if (it.kind === 'offer') return it.offer.retailer;
+  return best?.retailer || '_any';
+}
+
+function liRow(it, best) {
+  const c = catInfo(it.cat);
+  const p = LI.prices ? liPrice(it, best) : null;
+  const sub = [];
+  if (it.note) sub.push(esc(it.note));
+  if (it.kind === 'offer') {
+    const o = it.offer;
+    const expired = o.valid_to && o.valid_to < today();
+    sub.push(`<span class="rt" style="--c:${S.retailers[o.retailer]?.color || '#888'}">${esc(S.retailers[o.retailer]?.name || o.retailer)}</span>` +
+      `${o.app ? ` 📱 ${esc(o.app)}` : ''}${o.unit_price ? ` · ${fmt(o.unit_price)} €/${esc(o.unit)}` : ''}` +
+      (o.valid_to ? (expired ? ' · <span class="err">abgelaufen</span>' : ` · bis ${dshort(o.valid_to)}`) : ''));
+  } else if (it.kind === 'wish') {
+    sub.push(best ? `<span class="rt" style="--c:${S.retailers[best.retailer]?.color}">${esc(rname(best))}</span> ${best.ea ? '📱 ' : ''}` +
+      `${esc(best.brand)} ${esc(best.name)} · ${esc(metricLine(best, it.fav))}` : 'Wunsch · derzeit kein Angebot');
+  } else if (!it.done && it.price == null) {
+    const m = liMatches(it.name, catInfo(it.cat).id);
+    if (m.length) sub.push(`<span class="li-hint">💡 im Angebot: ${esc(rname(m[0]))} ${esc(priceLine(m[0]))}${m.length > 1 ? ` · ${m.length} Angebote` : ''}</span>`);
+  }
+  if (Cloud.enabled && it.by && it.by !== Cloud.name()) sub.push(`von ${esc(it.by)}`);
+  const q = qtyLabel(it);
+  return `<div class="li-row${it.done ? ' done' : ''}" data-lid="${it.id}">
+    <div class="li-bg"><span class="li-bg-done">✓ ${it.done ? 'zurück' : 'erledigt'}</span><span class="li-bg-del">Löschen 🗑</span></div>
+    <div class="li-fg">
+      <span class="li-ico" style="--c:${c.color}" title="${esc(c.name)}">${c.emoji}</span>
+      <div class="li-t" data-act="liEdit" data-lid="${it.id}">${esc(it.name)}${sub.length ? `<small>${sub.join(' · ')}</small>` : ''}</div>
+      ${q ? `<span class="li-q">${esc(q)}</span>` : ''}
+      ${p ? `<span class="li-p${p.app ? ' is-app' : ''}">${fmt(p.total)} €</span>` : ''}
+      <button class="check${it.done ? ' on' : ''}" data-act="liToggle" data-lid="${it.id}" aria-label="${it.done ? 'wieder auf den Zettel' : 'abhaken'}">✓</button>
+    </div></div>`;
+}
+
+function renderShop() {
+  view.innerHTML = `<div class="head li-head"><h2>📝 Einkaufszettel</h2><span id="liSum" class="li-sum"></span>
+      <button class="icon-btn li-menu-btn" data-act="liMenu" aria-label="Menü">⋯</button></div>
+    <form id="liForm" class="li-form" autocomplete="off">
+      <input id="liIn" type="text" enterkeyhint="done" placeholder="Ich brauche …  z.B. 3 l Milch, 1,5 %" value="${esc(LI.draft)}">
+      <button class="btn primary" aria-label="Hinzufügen">＋</button></form>
+    <div id="liSug" class="li-sug" hidden></div>
+    <div class="li-tools"><span class="seg">
+      <button class="${LI.view === 'cat' ? 'on' : ''}" data-act="liView" data-v="cat">Kategorien</button>
+      <button class="${LI.view === 'shop' ? 'on' : ''}" data-act="liView" data-v="shop">Händler</button>
+      <button class="${LI.view === 'plain' ? 'on' : ''}" data-act="liView" data-v="plain">Liste</button></span>
+      <span id="liSync" class="li-sync"></span></div>
+    <div id="liBody"></div>`;
+  liBody();
+  liSyncBadge();
+  liWake();
+}
+
+function liBody() {
+  const body = $('#liBody');
+  if (!body) return;
+  const open = liOpen(), done = liItems().filter(i => i.done);
+  const best = new Map(open.filter(i => i.kind === 'wish').map(i => [i.id, liBest(i)]));
+  const order = new Map(liCats().map((c, i) => [c.id, i]));
+  const catRank = it => order.get(catInfo(it.cat).id) ?? 9999;
+  let total = 0, priced = 0;
+  for (const it of open) {
+    const p = liPrice(it, best.get(it.id));
+    if (p) { total += p.total; priced++; }
+  }
+  const sum = $('#liSum');
+  if (sum) sum.innerHTML = open.length ? `${open.length} offen${LI.prices && priced ? ` · ${priced < open.length ? 'ca. ' : ''}<b>${fmt(total)} €</b>` : ''}` : '';
+
+  let h = '';
+  if (!open.length && !done.length) {
+    h = `<p class="empty">Der Zettel ist leer.<br><br>Oben eintippen, was du brauchst – z.B. „3 l Milch und 6 Eier“.
+      Bei Angeboten fügt ＋ das Angebot hinzu; in Produktgruppen und Favoriten legt „＋ Zettel“ einen Wunsch an,
+      für den immer das günstigste aktuelle Angebot angezeigt wird.</p>`;
+  } else if (!open.length) {
+    h = '<p class="empty">Alles erledigt 🎉</p>';
+  }
+  if (LI.view === 'plain' && open.length) {
+    // nur Liste, ohne Überschriften: nach Kategorie (Laden-Reihenfolge), Eingabe (IDs beginnen mit der Uhrzeit)
+    // oder alphabetisch
+    const byName = (a, b) => a.name.localeCompare(b.name, 'de');
+    const sorter = LI.sort === 'added' ? (a, b) => a.id.localeCompare(b.id)
+      : LI.sort === 'alpha' ? byName : (a, b) => catRank(a) - catRank(b) || byName(a, b);
+    h += `<div class="li-sortbar">Sortierung <span class="seg">${[['cat', 'Kategorie'], ['added', 'Eingabe'], ['alpha', 'A–Z']]
+      .map(([k, l]) => `<button class="${LI.sort === k ? 'on' : ''}" data-act="liSort" data-s="${k}">${l}</button>`).join('')}</span></div>
+      <section class="li-group">${[...open].sort(sorter).map(it => liRow(it, best.get(it.id))).join('')}</section>`;
+  }
+  const groups = new Map();
+  const keyOf = it => LI.view === 'shop' ? liRetailerOf(it, best.get(it.id)) : catInfo(it.cat).id;
+  for (const it of LI.view === 'plain' ? [] : open) {
+    const k = keyOf(it);
+    if (!groups.has(k)) groups.set(k, []);
+    groups.get(k).push(it);
+  }
+  const keys = LI.view === 'shop'
+    ? [...Object.keys(S.retailers), '_any'].filter(k => groups.has(k)).concat([...groups.keys()].filter(k => k !== '_any' && !S.retailers[k]))
+    : liCats().map(c => c.id).filter(k => groups.has(k));
+  for (const k of keys) {
+    const items = groups.get(k).sort((a, b) => catRank(a) - catRank(b) || a.name.localeCompare(b.name, 'de'));
+    let title;
+    if (LI.view === 'shop') {
+      const r = S.retailers[k];
+      title = r ? `<span class="rt" style="--c:${r.color}">${esc(r.name)}</span>` : 'Beliebiger Laden';
+    } else {
+      const c = catInfo(k);
+      title = `<span class="li-gdot" style="--c:${c.color}"></span>${c.emoji} ${esc(c.name)}`;
+    }
+    const gsum = LI.prices ? items.reduce((s, it) => s + (liPrice(it, best.get(it.id))?.total || 0), 0) : 0;
+    h += `<section class="li-group"><h3>${title}<span class="li-gsum">${gsum ? fmt(gsum) + ' €' : items.length}</span></h3>
+      ${items.map(it => liRow(it, best.get(it.id))).join('')}</section>`;
+  }
+  if (done.length) {
+    done.sort((a, b) => (b.dt || 0) - (a.dt || 0));
+    h += `<section class="li-group li-done"><h3 data-act="liDoneOpen">✓ Zuletzt abgehakt <i>${done.length}</i>
+      <span class="li-gsum">${LI.doneOpen ? '▴' : '▾'}</span></h3>
+      ${LI.doneOpen ? done.slice(0, 60).map(it => liRow(it, null)).join('') +
+        '<div class="li-done-acts"><button class="btn small" data-act="liClearDone">Abgehakte entfernen</button></div>' : ''}</section>`;
+  }
+  body.innerHTML = h;
+  updateBadges();
+}
+
+// nach Änderungen: nur den Listenbereich neu zeichnen (Eingabezeile behält Fokus und Text)
+function liRefresh() {
+  if (route()[0] === 'list' && $('#liBody')) liBody();
+  else updateBadges();
+  liWake();
+}
+
+function liSyncBadge() {
+  const el = $('#liSync');
+  if (!el || !Cloud.enabled) return;
+  const t = LI.lastSync ? new Date(LI.lastSync).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }) : '';
+  el.innerHTML = LI.syncing ? '⟳ gleicht ab …'
+    : LI.syncErr ? `<span class="err" title="${esc(LI.syncErr)}">⚠ offline – wird nachgeholt</span>`
+      : LI.dirty.size ? `⟳ ${LI.dirty.size} Änderung${LI.dirty.size > 1 ? 'en' : ''} ausstehend` : t ? `✓ abgeglichen ${t}` : '';
+}
+
+/* ---------- Vorschläge beim Tippen ---------- */
+
+function liSuggest() {
+  const box = $('#liSug');
+  if (!box) return;
+  const parts = liSplit(LI.draft);
+  const last = parts.length && !/\s+und\s*$/i.test(LI.draft) ? liParse(parts[parts.length - 1]) : null;
+  const q = last ? nkey(last.name) : '';
+  if (q.length < 2) { box.hidden = true; return; }
+  const openKeys = new Set(liOpen().map(i => nkey(i.name)));
+  const hist = [...R.hist.values()].filter(h => !h.del && nkey(h.name).includes(q))
+    .sort((a, b) => nkey(b.name).startsWith(q) - nkey(a.name).startsWith(q) || b.c - a.c).slice(0, 6);
+  const groups = [];
+  if (S.loaded) {
+    for (const [cat, gs] of Object.entries(S.groups)) {
+      for (const g of gs) if (g !== OTHER && nkey(g).includes(q)) groups.push([cat, g]);
+    }
+  }
+  if (!hist.length && !groups.length) { box.hidden = true; return; }
+  box.innerHTML = hist.map(h => `<button type="button" data-act="liSug" data-name="${esc(h.name)}">
+      <span>${catInfo(h.cat).emoji}</span>${esc(h.name)}<i>${openKeys.has(nkey(h.name)) ? '✓ auf dem Zettel' : h.c > 1 ? h.c + '×' : ''}</i></button>`).join('') +
+    groups.slice(0, 3).map(([c, g]) => `<button type="button" data-act="liSugWish" data-c="${esc(c)}" data-g="${esc(g)}">
+      <span>${ICONS[c] || '🏷️'}</span>${esc(g)}<i>Wunsch · günstigstes Angebot</i></button>`).join('');
+  box.hidden = false;
+}
+
+/* ---------- Bearbeiten ---------- */
+
+function liEditSheet(it) {
+  LI.editId = it.id;
+  const best = liBest(it);
+  const auto = it.kind === 'offer' ? it.offer.price : best?.ep;
+  const catOpts = liCats().filter(c => !c.hidden || c.id === it.cat)
+    .map(c => `<option value="${c.id}" ${c.id === catInfo(it.cat).id ? 'selected' : ''}>${c.emoji} ${esc(c.name)}</option>`).join('');
+  const unitOpts = `<option value="">–</option>` + LI_UNITS.map(([u]) => `<option ${u === it.unit ? 'selected' : ''}>${u}</option>`).join('');
+  let extra = '';
+  if (it.kind === 'offer') {
+    const o = it.offer, live = S.byId.get(o.id);
+    extra = `<div class="li-offer"><b>Angebot</b> ${esc(S.retailers[o.retailer]?.name || o.retailer)} · ${esc(o.title)}
+      · ${fmt(o.price)} €${o.unit_price ? ` (${fmt(o.unit_price)} €/${esc(o.unit)})` : ''}${o.app ? ` · 📱 ${esc(o.app)}` : ''}
+      ${live ? `<br><button class="btn small" data-act="open" data-id="${esc(o.id)}">Angebot ansehen</button>` : '<br><small class="muted">nicht mehr in den aktuellen Angeboten</small>'}</div>`;
+  } else {
+    const m = it.kind === 'wish' ? sortOffers(visible().filter(o => favMatch(it.fav, o)), metricSort(it.fav)) : liMatches(it.name, catInfo(it.cat).id);
+    if (m.length) {
+      extra = `<h3 class="li-sec">${it.kind === 'wish' ? 'Passende Angebote (günstigstes wird verwendet)' : 'Passende Angebote'}</h3>
+        <div class="li-offers">${m.slice(0, 6).map(o => `<div class="li-orow">
+          <span class="rt" style="--c:${S.retailers[o.retailer]?.color}">${esc(rname(o))}</span>
+          <span class="t" data-act="open" data-id="${esc(o.id)}">${esc(o.brand)} ${esc(o.name)}<small>${esc(priceLine(o))}${o.ea ? ' · 📱' : ''}</small></span>
+          <b>${fmt(o.ep)} €</b>
+          <button class="btn small" data-act="liUseOffer" data-oid="${esc(o.id)}">übernehmen</button></div>`).join('')}</div>
+        ${m.length > 6 ? `<p class="sub">+ ${m.length - 6} weitere – oben im Suchfeld nach „${esc(it.name)}“ suchen.</p>` : ''}`;
+    }
+  }
+  openSheet(`<div class="grab"></div><div class="li-edit">
+    <div class="head"><h2>Eintrag bearbeiten</h2></div>
+    <label class="li-f">Name<input data-li="name" value="${esc(it.name)}" autocomplete="off"></label>
+    <div class="li-f li-qrow"><span>Menge</span>
+      <button type="button" class="ic" data-act="liQtyStep" data-d="-1">−</button>
+      <input data-li="qty" inputmode="decimal" value="${it.qty ? fmtQty(it.qty) : ''}" placeholder="–">
+      <button type="button" class="ic" data-act="liQtyStep" data-d="1">＋</button>
+      <select data-li="unit">${unitOpts}</select></div>
+    <label class="li-f">Notiz<input data-li="note" value="${esc(it.note || '')}" placeholder="z.B. laktosefrei, die grüne Packung"></label>
+    <label class="li-f">Kategorie<select data-li="cat">${catOpts}</select></label>
+    <label class="li-f">Preis (€)<input data-li="price" inputmode="decimal" value="${it.price != null ? fmt(it.price) : ''}"
+      placeholder="${auto != null ? 'aus Angebot: ' + fmt(auto) : 'optional'}"></label>
+    <label class="switch li-f"><input type="checkbox" data-li="fixed" ${it.pm === 'fixed' ? 'checked' : ''}> Einzelpreis – nicht mit der Menge multiplizieren</label>
+    ${extra}
+    <div class="actions"><button class="btn danger" data-act="liDelEdit">Löschen</button>
+      <button class="btn" data-act="liToggleEdit">${it.done ? 'Wieder auf den Zettel' : 'Abhaken'}</button>
+      <button class="btn primary" data-act="closeSheet">Fertig</button></div></div>`);
+}
+
+function liEditField(el) {
+  const it = R.item.get(LI.editId);
+  if (!it) return;
+  const f = el.dataset.li, v = el.value.trim();
+  if (f === 'name') { if (!v) return; it.name = v; }
+  else if (f === 'qty') it.qty = v ? (toNum(v) > 0 ? toNum(v) : it.qty) : null;
+  else if (f === 'unit') it.unit = v;
+  else if (f === 'note') it.note = v;
+  else if (f === 'price') it.price = v ? (Number.isFinite(toNum(v)) ? toNum(v) : it.price) : null;
+  else if (f === 'fixed') it.pm = el.checked ? 'fixed' : null;
+  else if (f === 'cat') {
+    it.cat = v;
+    const k = nkey(it.name);
+    put('learn', { ...(R.learn.get(k) || {}), id: k, cat: v, del: false });  // beim nächsten Mal gleich richtig
+  }
+  put('item', it);
+  liRefresh();
+}
+
+/* ---------- Kategorien verwalten ---------- */
+
+function liCatSheet() {
+  const cats = liCats();
+  openSheet(`<div class="grab"></div><div class="head"><h2>Kategorien</h2></div>
+    <p class="sub">Reihenfolge = Weg durch den Laden. Ausgeblendete Kategorien stehen bei der Auswahl nicht zur Wahl.</p>
+    <div class="li-cats">${cats.map((c, i) => `<div class="li-cat${c.hidden ? ' hidden' : ''}">
+      <input class="emo" data-cat="${c.id}" data-f="emoji" value="${esc(c.emoji)}" maxlength="4" aria-label="Symbol">
+      <input class="nm" data-cat="${c.id}" data-f="name" value="${esc(c.name)}" aria-label="Name">
+      <input type="color" data-cat="${c.id}" data-f="color" value="${esc(c.color)}" aria-label="Farbe">
+      <button class="ic" data-act="liCatMove" data-cid="${c.id}" data-d="-1" ${i ? '' : 'disabled'} aria-label="nach oben">↑</button>
+      <button class="ic" data-act="liCatMove" data-cid="${c.id}" data-d="1" ${i < cats.length - 1 ? '' : 'disabled'} aria-label="nach unten">↓</button>
+      <button class="ic" data-act="liCatHide" data-cid="${c.id}" aria-label="${c.hidden ? 'einblenden' : 'ausblenden'}">${c.hidden ? '🚫' : '👁'}</button>
+      ${c.id === 'sonstiges' ? '' : `<button class="ic" data-act="liCatDel" data-cid="${c.id}" aria-label="löschen">🗑</button>`}
+    </div>`).join('')}</div>
+    <div class="actions"><button class="btn" data-act="liCatAdd">＋ Kategorie</button>
+      <button class="btn primary" data-act="closeSheet">Fertig</button></div>`);
+}
+
+function liCatReorder(cats) {
+  cats.forEach((c, i) => { if (c.order !== i * 10) { c.order = i * 10; put('cat', c); } });
+}
+
+/* ---------- Menü, Teilen, Bildschirm ---------- */
+
+function liMenuSheet() {
+  const canWake = 'wakeLock' in navigator;
+  openSheet(`<div class="grab"></div><div class="head"><h2>Einkaufszettel</h2></div>
+    <div class="panel">
+      <label class="line switch"><input type="checkbox" data-liset="prices" ${LI.prices ? 'checked' : ''}> Preise anzeigen</label>
+      <label class="line switch"><input type="checkbox" data-liset="wake" ${LI.wake ? 'checked' : ''} ${canWake ? '' : 'disabled'}>
+        Bildschirm bleibt beim Einkaufen an${canWake ? '' : ' (von diesem Browser nicht unterstützt)'}</label>
+    </div>
+    <div class="actions">
+      <button class="btn" data-act="liCats">🗂️ Kategorien bearbeiten</button>
+      <button class="btn" data-act="liShare">📤 Teilen</button>
+      <button class="btn" data-act="liClearDone">Abgehakte entfernen</button>
+      <button class="btn danger" data-act="liClear">Zettel leeren</button>
+      ${Cloud.enabled ? '<button class="btn" data-act="liSyncNow">⟳ Jetzt abgleichen</button>' : ''}
+    </div>`);
+}
+
+async function liWake() {
+  const want = LI.wake && route()[0] === 'list' && document.visibilityState === 'visible' && liOpen().length > 0;
+  try {
+    if (want && !LI.lock && 'wakeLock' in navigator) {
+      LI.lock = await navigator.wakeLock.request('screen');
+      LI.lock.addEventListener('release', () => { LI.lock = null; });
+    } else if (!want && LI.lock) {
+      await LI.lock.release();
+      LI.lock = null;
+    }
+  } catch { /* abgelehnt, z.B. Energiesparmodus */ }
+}
+
+function liShareText() {
+  const lines = ['Einkaufszettel'];
+  const open = liOpen();
+  for (const c of liCats()) {
+    const items = open.filter(i => catInfo(i.cat).id === c.id);
+    if (!items.length) continue;
+    lines.push('', `${c.emoji} ${c.name}`);
+    for (const it of items) {
+      const best = liBest(it);
+      const where = it.kind === 'offer' ? ` (${S.retailers[it.offer.retailer]?.name || it.offer.retailer} ${fmt(it.offer.price)} €)`
+        : best ? ` (${rname(best)}: ${best.brand} ${best.name} ${fmt(best.ep)} €)` : '';
+      lines.push(`- ${qtyLabel(it) ? qtyLabel(it) + ' ' : ''}${it.name}${it.note ? ' – ' + it.note : ''}${where}`);
+    }
+  }
+  return lines.join('\n');
+}
+
+/* ---------- Abgleich (Supabase) ---------- */
+
+const Sync = {
+  t: null,
+  soon() {
+    if (!Cloud.enabled) return;
+    clearTimeout(this.t);
+    this.t = setTimeout(() => this.run(), 800);
+  },
+  async run() {
+    if (!Cloud.enabled || !Cloud.loggedIn() || LI.syncing) return;
+    LI.syncing = true;
+    liSyncBadge();
+    let changed = false;
+    try {
+      // 1. eigene Änderungen senden (nur als erledigt markieren, wenn sich die Zeile inzwischen nicht geändert hat)
+      const keys = [...LI.dirty];
+      const rows = [], sent = [];
+      for (const k of keys) {
+        const [kind, ...rest] = k.split('|');
+        const id = rest.join('|'), d = R[kind]?.get(id);
+        if (!d) { LI.dirty.delete(k); continue; }
+        rows.push({ kind, id, data: d, deleted: !!d.del });
+        sent.push([k, kind, id, d.u]);
+      }
+      for (let i = 0; i < rows.length; i += 400) await Cloud.pushList(rows.slice(i, i + 400));
+      for (const [k, kind, id, u] of sent) if (R[kind].get(id)?.u === u) LI.dirty.delete(k);
+      // 2. Änderungen der anderen holen (2 s Überlappung gegen gleichzeitige Schreibvorgänge)
+      let since = LI.cursor ? new Date(Date.parse(LI.cursor) - 2000).toISOString() : '1970-01-01T00:00:00Z';
+      for (;;) {
+        const got = await Cloud.pullList(since);
+        for (const r of got) {
+          if (!R[r.kind]) continue;
+          const local = R[r.kind].get(r.id);
+          if (local && (local.u || 0) >= (r.data.u || 0)) continue;
+          R[r.kind].set(r.id, { ...r.data, del: r.deleted });
+          changed = true;
+        }
+        if (got.length) LI.cursor = got[got.length - 1].updated_at;
+        if (got.length < 1000) break;
+        since = LI.cursor;
+      }
+      save('li.cursor', LI.cursor);
+      LI.lastSync = Date.now();
+      LI.syncErr = null;
+    } catch (e) {
+      LI.syncErr = e.message;
+      if (e instanceof LoginNeeded) showLogin();
+    } finally {
+      LI.syncing = false;
+      liSave();
+      if (changed) liRefresh();
+      liSyncBadge();
+    }
+  },
+};
+
+/* ---------- Ereignisse ---------- */
+
+const liById = el => R.item.get(el.dataset.lid);
+const swiped = () => Date.now() - LI.suppress < 450;
+
+Object.assign(onClick, {
+  liToggle: el => {
+    if (swiped()) return;
+    const it = liById(el);
+    if (!it) return;
+    liSetDone(it, !it.done);
+    if (it.done) toast(`✓ ${it.name}`, { label: 'Rückgängig', fn: () => { liSetDone(it, false); liRefresh(); } });
+    liRefresh();
+  },
+  liEdit: el => { if (!swiped()) { const it = liById(el); if (it) liEditSheet(it); } },
+  liView: el => { LI.view = el.dataset.v; save('li.view', LI.view); renderShop(); },
+  liSort: el => { LI.sort = el.dataset.s; save('li.sort', LI.sort); liBody(); },
+  liDoneOpen: () => { LI.doneOpen = !LI.doneOpen; liBody(); },
+  liMenu: () => liMenuSheet(),
+  liCats: () => liCatSheet(),
+  liSug: el => {
+    // letzten Teil der Eingabe durch den Vorschlag ersetzen, Menge bleibt erhalten
+    const parts = liSplit(LI.draft);
+    const last = liParse(parts.pop() || '');
+    const q = last.qty ? `${fmtQty(last.qty)}${last.unit ? ' ' + last.unit : ''} ` : '';
+    liAddText([...parts, q + el.dataset.name].join(' und '));
+    LI.draft = '';
+    const inp = $('#liIn');
+    if (inp) { inp.value = ''; inp.focus(); }
+    $('#liSug').hidden = true;
+    liRefresh();
+  },
+  liSugWish: el => {
+    const c = el.dataset.c, g = el.dataset.g;
+    Li.addWish({ type: 'group', category: c, group: g, brands: [], brandOnly: false }, g);
+    LI.draft = '';
+    const inp = $('#liIn');
+    if (inp) inp.value = '';
+    $('#liSug').hidden = true;
+    liRefresh();
+  },
+  liQtyStep: el => {
+    const it = R.item.get(LI.editId);
+    if (!it) return;
+    const step = LI_MEASURE.has(it.unit) ? (it.unit === 'g' || it.unit === 'ml' ? 100 : 0.5) : 1;
+    it.qty = Math.max(step, Math.round(((it.qty || (Number(el.dataset.d) > 0 ? 0 : step)) + Number(el.dataset.d) * step) * 100) / 100);
+    put('item', it);
+    const inp = $('.li-edit [data-li="qty"]');
+    if (inp) inp.value = fmtQty(it.qty);
+    liRefresh();
+  },
+  liDelEdit: () => {
+    const it = R.item.get(LI.editId);
+    closeSheet();
+    if (it) { liDelete(it); liRefresh(); }
+  },
+  liToggleEdit: () => {
+    const it = R.item.get(LI.editId);
+    closeSheet();
+    if (it) { liSetDone(it, !it.done); liRefresh(); }
+  },
+  liUseOffer: el => {
+    const it = R.item.get(LI.editId), o = S.byId.get(el.dataset.oid);
+    if (!it || !o) return;
+    Object.assign(it, { kind: 'offer', offer: offerSnap(o), price: null });
+    delete it.fav;
+    put('item', it);
+    liRefresh();
+    liEditSheet(it);
+    toast('Angebot übernommen');
+  },
+  liClearDone: () => {
+    const done = liItems().filter(i => i.done);
+    if (!done.length) return;
+    done.forEach(it => { it.del = true; put('item', it); });
+    if (S.sheetOpen) closeSheet();
+    toast(`${done.length} abgehakte entfernt`, { label: 'Rückgängig', fn: () => { done.forEach(it => { it.del = false; put('item', it); }); liRefresh(); } });
+    liRefresh();
+  },
+  liClear: () => {
+    const all = liItems();
+    if (!all.length || !confirm('Einkaufszettel komplett leeren?')) return;
+    all.forEach(it => { it.del = true; put('item', it); });
+    if (S.sheetOpen) closeSheet();
+    toast('Zettel geleert', { label: 'Rückgängig', fn: () => { all.forEach(it => { it.del = false; put('item', it); }); liRefresh(); } });
+    liRefresh();
+  },
+  liShare: async () => {
+    const text = liShareText();
+    try {
+      if (navigator.share) await navigator.share({ text });
+      else { await navigator.clipboard.writeText(text); toast('In die Zwischenablage kopiert'); }
+    } catch { /* abgebrochen */ }
+  },
+  liSyncNow: () => { closeSheet(); Sync.run(); },
+  liCatMove: el => {
+    const cats = liCats(), i = cats.findIndex(c => c.id === el.dataset.cid), j = i + Number(el.dataset.d);
+    if (i < 0 || j < 0 || j >= cats.length) return;
+    [cats[i], cats[j]] = [cats[j], cats[i]];
+    liCatReorder(cats);
+    liCatSheet();
+    liRefresh();
+  },
+  liCatHide: el => {
+    const c = R.cat.get(el.dataset.cid);
+    if (!c) return;
+    c.hidden = !c.hidden;
+    put('cat', c);
+    liCatSheet();
+  },
+  liCatDel: el => {
+    const c = R.cat.get(el.dataset.cid);
+    if (!c || !confirm(`Kategorie „${c.name}“ löschen? Einträge landen in „Sonstiges“.`)) return;
+    c.del = true;
+    put('cat', c);
+    liCatSheet();
+    liRefresh();
+  },
+  liCatAdd: () => {
+    const name = prompt('Name der neuen Kategorie:');
+    if (!name?.trim()) return;
+    const cats = liCats();
+    const c = { id: 'c' + liNewId(), name: name.trim(), emoji: '🏷️', color: '#607d8b',
+      order: (cats.length ? cats[cats.length - 1].order : 0) + 10, hidden: false };
+    // vor „Sonstiges“ einsortieren
+    const s = cats.find(x => x.id === 'sonstiges');
+    put('cat', c);
+    if (s) liCatReorder([...cats.filter(x => x !== s), c, s]);
+    liCatSheet();
+  },
+});
+
+document.addEventListener('submit', e => {
+  if (e.target.id !== 'liForm') return;
+  e.preventDefault();
+  const inp = $('#liIn');
+  const n = liAddText(inp.value);
+  if (n) {
+    inp.value = '';
+    LI.draft = '';
+    $('#liSug').hidden = true;
+    liRefresh();
+  }
+});
+
+document.addEventListener('input', e => {
+  const el = e.target;
+  if (el.id === 'liIn') { LI.draft = el.value; liSuggest(); return; }
+  if (el.dataset.li && el.dataset.li !== 'cat' && el.dataset.li !== 'unit' && el.type !== 'checkbox') {
+    clearTimeout(LI.editTimer);
+    LI.editTimer = setTimeout(() => liEditField(el), 350);
+  }
+});
+
+document.addEventListener('change', e => {
+  const el = e.target;
+  if (el.dataset.li) { clearTimeout(LI.editTimer); liEditField(el); return; }
+  if (el.dataset.liset) {
+    LI[el.dataset.liset] = el.checked;
+    save('li.' + el.dataset.liset, el.checked);
+    liRefresh();
+    return;
+  }
+  if (el.dataset.cat) {
+    const c = R.cat.get(el.dataset.cat);
+    const v = el.value.trim();
+    if (!c || !v) return;
+    c[el.dataset.f] = v;
+    put('cat', c);
+    liRefresh();
+  }
+});
+
+// Wischgesten: rechts = abhaken / zurück, links = löschen (mit Rückgängig)
+(() => {
+  let sw = null;
+  view.addEventListener('pointerdown', e => {
+    const fg = e.target.closest('.li-fg');
+    if (!fg || e.button > 0 || e.target.closest('button')) return;
+    sw = { fg, row: fg.parentElement, x: e.clientX, y: e.clientY, dx: 0, active: false, id: e.pointerId };
+  });
+  view.addEventListener('pointermove', e => {
+    if (!sw || e.pointerId !== sw.id) return;
+    const dx = e.clientX - sw.x, dy = e.clientY - sw.y;
+    if (!sw.active) {
+      if (Math.abs(dx) > 12 && Math.abs(dx) > Math.abs(dy) * 1.5) {
+        sw.active = true;
+        sw.fg.setPointerCapture(e.pointerId);
+        sw.row.classList.add('swiping');
+      } else if (Math.abs(dy) > 12) { sw = null; return; } else return;
+    }
+    sw.dx = dx;
+    sw.fg.style.transform = `translateX(${dx}px)`;
+    sw.row.classList.toggle('to-done', dx > 0);
+    sw.row.classList.toggle('to-del', dx < 0);
+  });
+  const end = () => {
+    if (!sw) return;
+    const s = sw;
+    sw = null;
+    if (!s.active) return;
+    LI.suppress = Date.now();
+    const it = R.item.get(s.row.dataset.lid);
+    const limit = Math.min(110, s.row.offsetWidth * 0.3);
+    s.row.classList.remove('swiping');
+    if (it && s.dx > limit) {
+      liSetDone(it, !it.done);
+      if (it.done) toast(`✓ ${it.name}`, { label: 'Rückgängig', fn: () => { liSetDone(it, false); liRefresh(); } });
+      liRefresh();
+    } else if (it && s.dx < -limit) {
+      liDelete(it);
+      liRefresh();
+    } else {
+      s.fg.style.transition = 'transform .15s';
+      s.fg.style.transform = '';
+      setTimeout(() => { s.fg.style.transition = ''; }, 160);
+    }
+  };
+  view.addEventListener('pointerup', end);
+  view.addEventListener('pointercancel', end);
+})();
+
+document.addEventListener('visibilitychange', () => {
+  liWake();
+  if (document.visibilityState === 'visible') Sync.run();
+});
+window.addEventListener('online', () => Sync.run());
+setInterval(() => { if (document.visibilityState === 'visible') Sync.run(); }, 20000);
+window.addEventListener('hashchange', liWake);
+
+liLoad();
+boot();
