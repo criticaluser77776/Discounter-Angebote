@@ -66,8 +66,8 @@ const S = {
   open: new Set(), favSet: new Set(), sheetId: null, sheetOpen: false,
   status: null, poll: null, wasRunning: false,
   sort: load('sort', 'unit'),
-  f: Object.assign({ off: [], place: '', hideApp: false, hideOnline: true, onlyCurrent: false, hideNonFood: false, theme: 'auto' },
-    load('filters', {})),
+  f: Object.assign({ only: [], place: '', hideApp: false, hideOnline: true, onlyCurrent: false, hideNonFood: false, theme: 'auto' },
+    load('filters', {}), { off: undefined }),  // only = markierte Händler (leer = alle); altes „off“ verworfen
   favs: load('favs', []),
   favSort: load('favSort', 'offers'),  // Favoriten: 'offers' = mit Angeboten zuerst, 'own' = eigene Reihenfolge
   seen: new Set(load('seen', [])),
@@ -143,7 +143,7 @@ function applyEff() {
 
 function passes(o) {
   const f = S.f;
-  if (f.off.includes(o.retailer)) return false;
+  if (f.only.length && !f.only.includes(o.retailer)) return false;
   if (f.place && o.places.length && !o.places.includes(f.place)) return false;
   if (f.hideApp && o.app_price && !o.regular_price) return false;
   if (f.hideOnline && o.online_only) return false;
@@ -760,7 +760,7 @@ function renderMore() {
       <label class="line switch"><input type="checkbox" data-set="hideOnline" ${f.hideOnline ? 'checked' : ''}> Nur-online-Angebote ausblenden</label>
       <label class="line switch"><input type="checkbox" data-set="onlyCurrent" ${f.onlyCurrent ? 'checked' : ''}> Nur aktuell gültige (keine Vorschau auf nächste Woche)</label>
       <label class="line switch"><input type="checkbox" data-set="hideNonFood" ${f.hideNonFood ? 'checked' : ''}> Non-Food ausblenden</label>
-      <p class="muted" style="margin:6px 0 0;font-size:.85rem">Händler blendest du oben über die farbigen Chips aus (Doppeltipp = nur diesen Händler).</p>
+      <p class="muted" style="margin:6px 0 0;font-size:.85rem">Oben über die farbigen Chips Händler markieren: dann werden nur diese angezeigt, ohne Markierung alle.</p>
     </div>
     <div class="panel"><h3>Darstellung</h3>
       <label class="line">Farbschema <select data-set="theme">
@@ -1041,7 +1041,7 @@ function onRoute() {
 
 function renderChips() {
   $('#retailerChips').innerHTML = Object.entries(S.retailers).map(([k, r]) =>
-    `<button class="chip ${S.f.off.includes(k) ? 'off' : ''}" data-act="rt" data-r="${k}" style="--c:${r.color}"><span class="dot"></span>${esc(r.name)}</button>`
+    `<button class="chip ${S.f.only.includes(k) ? 'sel' : ''}" data-act="rt" data-r="${k}" style="--c:${r.color}"><span class="dot"></span>${esc(r.name)}</button>`
   ).join('');
 }
 
@@ -1095,7 +1095,7 @@ const onClick = {
   sort: el => { S.sort = el.dataset.s; save('sort', S.sort); rerender(); },
   rt: el => {
     const k = el.dataset.r;
-    S.f.off = S.f.off.includes(k) ? S.f.off.filter(x => x !== k) : [...S.f.off, k];
+    S.f.only = S.f.only.includes(k) ? S.f.only.filter(x => x !== k) : [...S.f.only, k];
     save('filters', S.f); renderChips(); rerender();
   },
   brand: el => {
@@ -1228,13 +1228,6 @@ document.addEventListener('click', e => {
   if (fn) fn(el, e);
 });
 
-document.addEventListener('dblclick', e => {
-  const el = e.target.closest('[data-act="rt"]');
-  if (!el) return;
-  S.f.off = Object.keys(S.retailers).filter(k => k !== el.dataset.r);
-  save('filters', S.f); renderChips(); rerender();
-  toast(`Nur ${S.retailers[el.dataset.r].name} – Doppeltipp auf einen ausgeblendeten Chip zeigt wieder alle`);
-});
 
 document.addEventListener('change', e => {
   const el = e.target;
