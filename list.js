@@ -102,7 +102,8 @@ const LI = {
   wake: load('li.wake', true),
   doneOpen: false,
   draft: '',
-  prioNext: false,  // Schalter ❗ neben der Eingabe: nächster Eintrag wird als wichtig angelegt
+  prioNext: false,
+  histOpen: false, histAll: false, histSort: load('li.histSort', 'last'),  // Schalter ❗ neben der Eingabe: nächster Eintrag wird als wichtig angelegt
   editId: null,
   lock: null,
   syncing: false, lastSync: null, syncErr: null,
@@ -357,12 +358,34 @@ function liGuess(name) {
 
 /* ---------- Einträge ändern ---------- */
 
-function liRemember(it) {
+// Verlauf (R.hist, je Name): bleibt dauerhaft – Löschen, Abhaken oder Leeren des Zettels entfernen nichts.
+// c = wie oft auf dem Zettel, b = wie oft gekauft (abgehakt), last/bought = zuletzt; Wünsche merken ihren Filter
+function liRemember(it, when = Date.now()) {
   const k = nkey(it.name);
   if (!k) return;
-  const h = R.hist.get(k) || { id: k, c: 0 };
-  Object.assign(h, { name: it.name, c: (h.c || 0) + 1, cat: it.cat, last: Date.now(), del: false });
+  const h = R.hist.get(k) || { id: k, c: 0, b: 0 };
+  Object.assign(h, { name: it.name, c: (h.c || 0) + 1, cat: it.cat, last: Math.max(h.last || 0, when), del: false });
+  if (it.kind === 'wish' && it.fav) h.fav = it.fav;
+  if (it.qty && it.unit) Object.assign(h, { qty: it.qty, unit: it.unit });
   put('hist', h);
+}
+
+function liBought(it) {
+  const h = R.hist.get(nkey(it.name));
+  if (!h) { liRemember(it); return liBought(it); }
+  Object.assign(h, { b: (h.b || 0) + 1, bought: Date.now() });
+  put('hist', h);
+}
+
+// einmalig: vorhandene Einträge (auch gelöschte/abgehakte) in den Verlauf übernehmen
+function liHistBackfill() {
+  if (load('li.histFilled', false)) return;
+  for (const it of R.item.values()) {
+    if (R.hist.has(nkey(it.name))) continue;
+    liRemember(it, parseInt(it.id.slice(0, 8), 36) || it.u || Date.now());
+    if (it.done) liBought(it);
+  }
+  save('li.histFilled', true);
 }
 
 function liAddFree(name, qty, unit, prio = false) {
@@ -417,6 +440,7 @@ const liOfferItem = o => liOpen().find(i => i.kind === 'offer' && i.offer?.id ==
 function liSetDone(it, done) {
   Object.assign(it, { done, dt: done ? Date.now() : null });
   put('item', it);
+  if (done) liBought(it);
 }
 
 function liDelete(it, undoText = 'Gelöscht') {
@@ -445,6 +469,7 @@ const Li = {
     put('item', { id: liNewId(), kind: 'offer', name, qty: 1, unit: '', note: '', price: null, pm: null,
       cat: learned && !learned.del ? learned.cat : LI_OFFER_CAT[o.category] || 'sonstiges',
       offer: offerSnap(o), done: false, dt: null, by: Cloud.name(), prio });
+    liRemember(liOfferItem(o));
     toast(prio ? '❗ Wichtig auf den Einkaufszettel' : '＋ Auf den Einkaufszettel');
   },
   addWish(filter, label, parsed) {
@@ -452,6 +477,7 @@ const Li = {
     put('item', { id: liNewId(), kind: 'wish', name: label, fav, qty: parsed?.qty || 1, unit: parsed?.unit || '', note: '',
       price: null, pm: null, prio: !!parsed?.prio,
       cat: LI_OFFER_CAT[fav.category] || liGuess(label), done: false, dt: null, by: Cloud.name() });
+    liRemember([...R.item.values()].filter(i => i.kind === 'wish' && i.name === label).pop());
     toast(`＋ „${label}“ auf den Einkaufszettel`);
   },
 };
@@ -648,6 +674,26 @@ function liBody() {
       <span class="li-gsum">${LI.doneOpen ? '▴' : '▾'}</span></h3>
       ${LI.doneOpen ? done.slice(0, 60).map(it => liRow(it, null)).join('') +
         '<div class="li-done-acts"><button class="btn small" data-act="liClearDone">Abgehakte entfernen</button></div>' : ''}</section>`;
+  }
+  const hist = [...R.hist.values()].filter(x => !x.del && x.name);
+  if (hist.length) {
+    const openKeys = new Set(open.map(i => nkey(i.name)));
+    const d = ts => ts ? new Date(ts).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: '2-digit' }) : '';
+    const sorter = LI.histSort === 'freq' ? (a, b) => (b.c || 0) - (a.c || 0) || (b.last || 0) - (a.last || 0)
+      : LI.histSort === 'alpha' ? (a, b) => a.name.localeCompare(b.name, 'de') : (a, b) => (b.last || 0) - (a.last || 0);
+    h += `<section class="li-group li-done li-hist"><h3 data-act="liHistOpen">🕘 Verlauf <i>${hist.length}</i>
+      <span class="li-gsum">${LI.histOpen ? '▴' : '▾'}</span></h3>
+      ${LI.histOpen ? `<div class="li-sortbar" style="padding:8px 14px 4px">Sortierung <span class="seg">${[['last', 'Zuletzt'], ['freq', 'Häufig'], ['alpha', 'A–Z']]
+        .map(([k, l]) => `<button class="${(LI.histSort || 'last') === k ? 'on' : ''}" data-act="liHistSort" data-s="${k}">${l}</button>`).join('')}</span></div>` +
+        hist.sort(sorter).slice(0, LI.histAll ? 1000 : 60).map(x => {
+          const c = catInfo(x.cat), on = openKeys.has(nkey(x.name));
+          return `<div class="li-row"><div class="li-fg">
+            <span class="li-ico" style="--c:${c.color}">${c.emoji}</span>
+            <div class="li-t">${esc(x.name)}<small>${x.fav ? '★ Wunsch · ' : ''}${x.c || 1}× auf dem Zettel${x.b ? ` · ${x.b}× gekauft, zuletzt ${d(x.bought)}` : ` · zuletzt ${d(x.last)}`}</small></div>
+            ${on ? '<span class="li-q muted">auf dem Zettel</span>'
+              : `<button class="ic add" data-act="liHistAdd" data-hid="${esc(x.id)}" aria-label="Wieder auf den Zettel">＋</button>`}
+          </div></div>`;
+        }).join('') + (hist.length > 60 && !LI.histAll ? '<div class="li-done-acts"><button class="btn small" data-act="liHistAll">Alle anzeigen</button></div>' : '') : ''}</section>`;
   }
   body.innerHTML = h;
   updateBadges();
@@ -985,6 +1031,17 @@ Object.assign(onClick, {
   },
   liSort: el => { LI.sort = el.dataset.s; save('li.sort', LI.sort); liBody(); },
   liDoneOpen: () => { LI.doneOpen = !LI.doneOpen; liBody(); },
+  liHistOpen: () => { LI.histOpen = !LI.histOpen; liBody(); },
+  liHistSort: el => { LI.histSort = el.dataset.s; save('li.histSort', LI.histSort); liBody(); },
+  liHistAll: () => { LI.histAll = true; liBody(); },
+  liHistAdd: el => {
+    const x = R.hist.get(el.dataset.hid);
+    if (!x) return;
+    const prio = liTakePrio();
+    if (x.fav) Li.addWish(x.fav, x.name, { prio });
+    else { liAddFree(x.name, x.qty || null, x.unit || '', prio); toast(`＋ „${x.name}“ wieder auf dem Zettel`); }
+    liRefresh();
+  },
   liMenu: () => liMenuSheet(),
   liCats: () => liCatSheet(),
   liSug: el => {
@@ -1168,7 +1225,7 @@ document.addEventListener('change', e => {
 (() => {
   let sw = null;
   view.addEventListener('pointerdown', e => {
-    const fg = e.target.closest('.li-fg');
+    const fg = e.target.closest('.li-row[data-lid] .li-fg');  // nur Zettel-Einträge, nicht der Verlauf
     if (!fg || e.button > 0 || e.target.closest('button')) return;
     sw = { fg, row: fg.parentElement, x: e.clientX, y: e.clientY, dx: 0, active: false, id: e.pointerId };
   });
@@ -1222,5 +1279,6 @@ setInterval(() => { if (document.visibilityState === 'visible') Sync.run(); }, 2
 window.addEventListener('hashchange', liWake);
 
 liLoad();
+liHistBackfill();
 liFavsPush(S.favs);  // lokale Favoriten dieses Geräts einbringen (nur online und mit Namen)
 boot();
