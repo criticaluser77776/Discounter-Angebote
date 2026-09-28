@@ -515,12 +515,21 @@ function renderAll() {
   const sel = S.f.only.map(k => S.retailers[k]?.name || k);
   let h = `<div class="head"><h2>🏷️ Alle Angebote</h2></div>
     <div class="sortbar"><span>${list.length} Angebote · ${sel.length ? esc(sel.join(', ')) : 'alle Händler'}</span></div>`;
+  // Schnellwahl: springt zur Kategorie (kein Filter)
+  const cc = countBy(list, o => o.category);
+  const cats = [...new Set(list.map(o => o.category))];
+  if (cats.length > 1) h += '<div class="chips scroll">' + cats.map(c =>
+    `<button class="chip" data-act="allJump" data-c="${esc(c)}">${ICONS[c] || ''} ${esc(c)} <i>${cc[c]}</i></button>`).join('') + '</div>';
   if (!list.length) { view.innerHTML = h + '<p class="empty">Keine passenden Angebote.</p>'; return; }
+  S.allOrder = cats;
+  S.allStart = cats.map(c => list.findIndex(o => o.category === c));
+  const from = Math.min(S.allFrom || 0, list.length - 1);
   h += '<div class="list">';
+  if (from > 0) h += `<button class="btn more-btn" data-act="allPrev">▲ ${from} Angebote davor anzeigen</button>`;
   let last = null;
-  for (const o of list.slice(0, S.limit)) {
+  for (const o of list.slice(from, S.limit)) {
     if (o.category !== last) {
-      h += `<div class="unit-head cat-head">${ICONS[o.category] || '📦'} ${esc(o.category)}</div>`;
+      h += `<div class="unit-head cat-head" data-cat="${esc(o.category)}">${ICONS[o.category] || '📦'} ${esc(o.category)}</div>`;
       last = o.category;
     }
     h += card(o);
@@ -1063,12 +1072,13 @@ let lastHash = location.hash || '#/', restoring = null;
 
 function onRoute() {
   const old = tabOf(lastHash);
-  if (old) tabMem[old] = { hash: lastHash, y: window.scrollY, limit: S.limit, brands: S.brands, brandOnly: S.brandOnly,
+  if (old) tabMem[old] = { hash: lastHash, y: window.scrollY, limit: S.limit, allFrom: S.allFrom, brands: S.brands, brandOnly: S.brandOnly,
     q: S.q, qFacet: S.qFacet, qBrands: new Set(S.qBrands), showWeak: S.showWeak };
   lastHash = location.hash || '#/';
   const m = restoring && restoring.hash === lastHash ? restoring : null;
   restoring = null;
   S.limit = m?.limit || 60;
+  S.allFrom = m?.allFrom || 0;
   S.brands = m?.brands || new Set();
   S.brandOnly = m?.brandOnly || false;
   S.pickOpen = null;
@@ -1160,10 +1170,36 @@ const onClick = {
   add: el => { Li.toggleOffer(S.byId.get(el.dataset.id)); rerender(); },
   addPrio: el => { Li.toggleOffer(S.byId.get(el.dataset.id), true); rerender(); },
   more: () => { S.limit += 120; rerender(); },
+  allPrev: () => {
+    // frühere Angebote oben einfügen, ohne dass die Ansicht springt
+    const anchor = document.querySelector('.list .card');
+    const before = anchor?.getBoundingClientRect().top;
+    S.allFrom = Math.max(0, (S.allFrom || 0) - 120);
+    rerender();
+    const same = anchor && document.querySelector(`.list .card[data-id="${CSS.escape(anchor.dataset.id)}"]`);
+    if (same) window.scrollBy(0, same.getBoundingClientRect().top - before);
+  },
+  allJump: el => {
+    const c = el.dataset.c;
+    const find = () => [...document.querySelectorAll('.cat-head')].find(x => x.dataset.cat === c);
+    let head = find();
+    if (!head) {
+      // Kategorie noch nicht geladen: Liste ab dieser Kategorie zeigen (davor per ▲ nachladbar)
+      const start = S.allStart[S.allOrder.indexOf(c)];
+      S.allFrom = start;
+      S.limit = start + 60;
+      rerender();
+      head = find();
+    }
+    if (!head) return;
+    const top = $('header.top').offsetHeight;
+    window.scrollTo(0, head.getBoundingClientRect().top + window.scrollY - top - 6);
+  },
   sort: el => { S.sort = el.dataset.s; save('sort', S.sort); rerender(); },
   rt: el => {
     const k = el.dataset.r;
     S.f.only = S.f.only.includes(k) ? S.f.only.filter(x => x !== k) : [...S.f.only, k];
+    S.allFrom = 0;  // „Alle“: andere Liste, wieder von vorn
     save('filters', S.f); renderChips(); rerender();
   },
   brand: el => {
