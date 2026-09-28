@@ -2,7 +2,7 @@
 /* Einkaufszettel (Tab „Zettel“)
    - Einträge: frei („3 l Milch, 1,5 %“), konkretes Angebot oder Wunsch (Filter -> günstigstes aktuelles Angebot)
    - Menge + Einheit, Notiz, Kategorie (automatisch, änderbar, wird je Name gemerkt), Preis (aus Angebot oder manuell)
-   - eigene Einkaufs-Kategorien mit Symbol/Farbe in Laden-Reihenfolge; Ansichten Kategorien, Einfach, Details
+   - eigene Einkaufs-Kategorien mit Symbol/Farbe in Laden-Reihenfolge; Ansichten Einfach (Standard), Details, Kategorien
    - „zuletzt abgehakt“, Wischgesten (rechts = abhaken, links = löschen), Rückgängig, Bildschirm bleibt an
    - Abgleich über Supabase (cloud.js): jede Zeile (Eintrag, Kategorie, Gelerntes, Historie) trägt ihre
      Änderungszeit u; neuere Stände gewinnen, gelöscht wird per del-Markierung. */
@@ -96,7 +96,8 @@ const R = Object.fromEntries(LI_KINDS.map(k => [k, new Map()]));
 const LI = {
   dirty: new Set(load('li.dirty', [])),
   cursor: load('li.cursor', null),
-  view: ['cat', 'plain', 'simple'].includes(load('li.view', 'cat')) ? load('li.view', 'cat') : 'cat',  // Händler-Ansicht entfernt
+  // Standard „Einfach“ (einmalig auch für bestehende Geräte umgestellt, Händler-Ansicht gibt es nicht mehr)
+  view: load('li.viewV2', false) && ['cat', 'plain', 'simple'].includes(load('li.view', 'simple')) ? load('li.view', 'simple') : 'simple',
   sort: load('li.sort', 'cat'),   // Sortierung der Ansicht „Liste“
   prices: load('li.prices', true),
   wake: load('li.wake', true),
@@ -565,7 +566,7 @@ function qtyLabel(it) {
   return it.unit ? `${fmtQty(it.qty)} ${it.unit}` : `${fmtQty(it.qty)}×`;
 }
 
-// Ansicht „Einfach“: wie „Liste“, aber nur Name (+ Menge) – keine Angebote, Preise, Notizen, „von“
+// Ansicht „Einfach“: wie „Details“, aber nur Name (+ Menge) – keine Angebote, Preise, Notizen, „von“
 const liSimple = () => LI.view === 'simple';
 const liFlat = () => LI.view === 'plain' || LI.view === 'simple';
 const liShowPrices = () => LI.prices && !liSimple();
@@ -611,9 +612,9 @@ function renderShop() {
       <button class="btn primary" aria-label="Hinzufügen">＋</button></form>
     <div id="liSug" class="li-sug" hidden></div>
     <div class="li-tools"><span class="seg">
-      <button class="${LI.view === 'cat' ? 'on' : ''}" data-act="liView" data-v="cat">Kategorien</button>
       <button class="${LI.view === 'simple' ? 'on' : ''}" data-act="liView" data-v="simple">Einfach</button>
-      <button class="${LI.view === 'plain' ? 'on' : ''}" data-act="liView" data-v="plain">Details</button></span>
+      <button class="${LI.view === 'plain' ? 'on' : ''}" data-act="liView" data-v="plain">Details</button>
+      <button class="${LI.view === 'cat' ? 'on' : ''}" data-act="liView" data-v="cat">Kategorien</button></span>
       <button id="liSync" class="li-sync" data-act="liSyncInfo" hidden></button></div>
     <div id="liBody"></div>`;
   liBody();
@@ -699,7 +700,7 @@ function liBody() {
           return `<div class="li-row" data-hid="${esc(x.id)}">
             <div class="li-bg"><span class="li-bg-done"></span><span class="li-bg-del">Aus Verlauf entfernen 🗑</span></div><div class="li-fg">
             <span class="li-ico" style="--c:${c.color}">${c.emoji}</span>
-            <div class="li-t">${esc(x.name)}<small>${x.fav ? '★ Wunsch · ' : ''}${x.c || 1}× auf dem Zettel${x.b ? ` · ${x.b}× gekauft, zuletzt ${d(x.bought)}` : ` · zuletzt ${d(x.last)}`}</small></div>
+            <div class="li-t">${esc(x.name)}${liSimple() ? '' : `<small>${x.fav ? '★ Wunsch · ' : ''}${x.c || 1}× auf dem Zettel${x.b ? ` · ${x.b}× gekauft, zuletzt ${d(x.bought)}` : ` · zuletzt ${d(x.last)}`}</small>`}</div>
             <button class="ic add" data-act="liHistAdd" data-hid="${esc(x.id)}" aria-label="Wieder auf den Zettel">＋</button>
           </div></div>`;
         }).join('') + (hist.length > 60 && !LI.histAll ? '<div class="li-done-acts"><button class="btn small" data-act="liHistAll">Alle anzeigen</button></div>' : '') : ''}</section>`;
@@ -1007,7 +1008,7 @@ Object.assign(onClick, {
     liRefresh();
   },
   liEdit: el => { if (!swiped()) { const it = liById(el); if (it) liEditSheet(it); } },
-  liView: el => { LI.view = el.dataset.v; save('li.view', LI.view); renderShop(); },
+  liView: el => { LI.view = el.dataset.v; save('li.view', LI.view); save('li.viewV2', true); renderShop(); },
   liMatch: el => {
     const it = R.item.get(LI.editId);
     if (!it) return;
