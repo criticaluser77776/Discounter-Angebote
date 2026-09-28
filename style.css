@@ -449,3 +449,12 @@ pre.log {
 .fav-acts { display: flex; gap: 4px; justify-content: flex-end; margin-top: 6px; }
 .fav-acts .ic { width: 30px; height: 30px; }
 .fav-settings { border-top: 1px solid var(--line); padding-top: 8px; background: var(--surface-2); }
+/* Detailansicht: regulärer Preis; bei drei Preisen waagerecht wischbar (dritter schaut rechts herein) */
+.pcol.reg b { color: var(--muted); }
+.prices-scroll {
+  display: flex; overflow-x: auto; scroll-snap-type: x mandatory; scroll-padding-inline: 16px; scrollbar-width: none;
+  -webkit-overflow-scrolling: touch; padding-bottom: 8px;
+}
+.prices-scroll::-webkit-scrollbar { display: none; }
+.prices-scroll .pcol { flex: 0 0 calc(46% - 5px); scroll-snap-align: start; }
+.prices-scroll::after { content: ""; flex: 0 0 6px; }

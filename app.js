@@ -962,6 +962,18 @@ function detailPrices(o, old, d) {
     h += `<div class="pcol app"><small>📱 mit ${esc(appName(o))}${o.app_note ? ` · ${esc(o.app_note)}` : ''}</small>
       <b>${fmt(o.price)} €</b><small>${unit(o.unit_price)}${save > 0.004 ? ` · spart ${fmt(save)} € (${Math.round(100 * save / np)}%)` : ''}</small></div>`;
   }
+  // Regulärer Preis: Streichpreis des Händlers, sonst aus dem Rabatt errechnet (Edeka nennt nur „−25 %“)
+  const base = np ?? o.price;
+  const reg = old ?? (o.discount > 0 && o.discount < 90 ? Math.round(base / (1 - o.discount / 100) * 100) / 100 : null);
+  if (reg != null || !o.app_price) {
+    const regUnit = reg != null && o.unit_price ? Math.round(reg * o.unit_price / o.price * 100) / 100 : null;
+    const saving = reg != null ? reg - base : 0;
+    h += `<div class="pcol reg"><small>Regulärer Preis${old == null && reg != null ? ` (aus −${o.discount}% errechnet)` : ''}</small>
+      <b>${reg != null ? `${old == null ? 'ca. ' : ''}${fmt(reg)} €` : '–'}</b>
+      <small>${reg != null ? `${unit(regUnit)}${saving > 0.004 ? ` · Angebot spart ${fmt(saving)} €` : ''}` : 'vom Händler nicht angegeben'}</small></div>`;
+  }
+  // drei Preise (Angebot, App, regulär): waagerecht wischbar, der dritte schaut rechts herein
+  if (o.app_price && reg != null) h = h.replace('<div class="prices2">', '<div class="prices2 prices-scroll">');
   h += `</div><p class="sub" style="margin:0">${src}${d && d > 0 ? ` · <span class="tag red">−${d}%</span>` : ''}
     ${S.f.hideApp && o.app_price ? ' · App-Preise werden laut Einstellung nicht berücksichtigt' : ''}</p>`;
   if (!o.app_price && o.app_note) h += `<p class="hint">📱 ${esc(appName(o))}: ${esc(o.app_note)}</p>`;
