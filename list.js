@@ -2,7 +2,7 @@
 /* Einkaufszettel (Tab „Zettel“)
    - Einträge: frei („3 l Milch, 1,5 %“), konkretes Angebot oder Wunsch (Filter -> günstigstes aktuelles Angebot)
    - Menge + Einheit, Notiz, Kategorie (automatisch, änderbar, wird je Name gemerkt), Preis (aus Angebot oder manuell)
-   - eigene Einkaufs-Kategorien mit Symbol/Farbe in Laden-Reihenfolge; Ansichten Kategorien, Liste, Einfach
+   - eigene Einkaufs-Kategorien mit Symbol/Farbe in Laden-Reihenfolge; Ansichten Kategorien, Einfach, Details
    - „zuletzt abgehakt“, Wischgesten (rechts = abhaken, links = löschen), Rückgängig, Bildschirm bleibt an
    - Abgleich über Supabase (cloud.js): jede Zeile (Eintrag, Kategorie, Gelerntes, Historie) trägt ihre
      Änderungszeit u; neuere Stände gewinnen, gelöscht wird per del-Markierung. */
@@ -612,8 +612,8 @@ function renderShop() {
     <div id="liSug" class="li-sug" hidden></div>
     <div class="li-tools"><span class="seg">
       <button class="${LI.view === 'cat' ? 'on' : ''}" data-act="liView" data-v="cat">Kategorien</button>
-      <button class="${LI.view === 'plain' ? 'on' : ''}" data-act="liView" data-v="plain">Liste</button>
-      <button class="${LI.view === 'simple' ? 'on' : ''}" data-act="liView" data-v="simple">Einfach</button></span>
+      <button class="${LI.view === 'simple' ? 'on' : ''}" data-act="liView" data-v="simple">Einfach</button>
+      <button class="${LI.view === 'plain' ? 'on' : ''}" data-act="liView" data-v="plain">Details</button></span>
       <button id="liSync" class="li-sync" data-act="liSyncInfo" hidden></button></div>
     <div id="liBody"></div>`;
   liBody();
