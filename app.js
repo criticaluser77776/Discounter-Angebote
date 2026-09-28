@@ -853,6 +853,59 @@ function closeSheet() {
   if (S.sheetOpen) history.back(); // popstate blendet aus
 }
 
+// Fenster nach unten wegwischen: nur wenn der Inhalt ganz oben steht (sonst wird normal gescrollt);
+// ab ca. einem Viertel der Höhe oder bei schnellem Wisch schließen, sonst zurückfedern. Maus: am Griffstrich.
+(() => {
+  const body = $('.sheet-body'), backdrop = $('.sheet-backdrop');
+  let st = null;
+  const reset = () => { body.style.transform = ''; backdrop.style.opacity = ''; };
+  const start = (x, y) => { if (S.sheetOpen) st = { x, y, t: Date.now(), dy: 0, active: false, top: body.scrollTop <= 0 }; };
+  const move = (x, y, e) => {
+    if (!st) return;
+    const dy = y - st.y, dx = x - st.x;
+    if (!st.active) {
+      if (!st.top || dy < -6 || Math.abs(dx) > Math.max(8, dy)) { st = null; return; }
+      if (dy < 10) return;
+      st.active = true;
+      body.style.transition = backdrop.style.transition = 'none';
+    }
+    st.dy = Math.max(0, dy - 10);
+    body.style.transform = `translateY(${st.dy}px)`;
+    backdrop.style.opacity = String(Math.max(0.2, 1 - st.dy / body.offsetHeight));
+    if (e?.cancelable) e.preventDefault();  // kein Scrollen/Neuladen der Seite während des Wischens
+  };
+  const end = () => {
+    if (!st) return;
+    const s = st;
+    st = null;
+    if (!s.active) return;
+    body.style.transition = 'transform .2s ease';
+    backdrop.style.transition = 'opacity .2s ease';
+    const fast = s.dy > 40 && Date.now() - s.t < 300;
+    if (s.dy > Math.min(160, body.offsetHeight * 0.25) || fast) {
+      body.style.transform = 'translateY(100%)';
+      backdrop.style.opacity = '0';
+      setTimeout(() => { closeSheet(); setTimeout(() => { body.style.transition = backdrop.style.transition = ''; reset(); }, 50); }, 180);
+    } else {
+      reset();
+      setTimeout(() => { body.style.transition = backdrop.style.transition = ''; }, 220);
+    }
+  };
+  body.addEventListener('touchstart', e => start(e.touches[0].clientX, e.touches[0].clientY), { passive: true });
+  body.addEventListener('touchmove', e => move(e.touches[0].clientX, e.touches[0].clientY, e), { passive: false });
+  body.addEventListener('touchend', end);
+  body.addEventListener('touchcancel', end);
+  body.addEventListener('pointerdown', e => {
+    if (e.pointerType !== 'mouse' || !e.target.closest('.grab')) return;
+    e.preventDefault();
+    start(e.clientX, e.clientY);
+    const mm = ev => move(ev.clientX, ev.clientY);
+    const mu = () => { end(); window.removeEventListener('pointermove', mm); window.removeEventListener('pointerup', mu); };
+    window.addEventListener('pointermove', mm);
+    window.addEventListener('pointerup', mu);
+  });
+})();
+
 async function openDetail(id) {
   const o = S.byId.get(id);
   if (!o) return;

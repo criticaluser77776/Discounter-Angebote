@@ -381,7 +381,9 @@ pre.log {
   border-radius: 18px 18px 0 0; padding: 8px 0 calc(16px + env(safe-area-inset-bottom));
   max-width: 720px; margin: 0 auto;
 }
-.grab { width: 40px; height: 4px; background: var(--line); border-radius: 2px; margin: 4px auto 8px; }
+.grab { width: 40px; height: 4px; background: var(--line); border-radius: 2px; margin: 4px auto 8px; cursor: grab; }
+.grab::before { content: ""; display: block; height: 24px; margin: -10px -40px 0; }  /* größere Griff-Fläche */
+.sheet-body { overscroll-behavior: contain; }
 .detail-img { display: grid; place-items: center; background: #fff; height: 200px; margin: 0 16px; border-radius: var(--radius); font-size: 64px; }
 .detail-img img { max-width: 100%; max-height: 190px; object-fit: contain; }
 .detail-title { padding: 12px 16px 0; }
