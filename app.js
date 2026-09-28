@@ -518,7 +518,7 @@ function renderAll() {
   // Schnellwahl: springt zur Kategorie (kein Filter)
   const cc = countBy(list, o => o.category);
   const cats = [...new Set(list.map(o => o.category))];
-  if (cats.length > 1) h += '<div class="chips scroll">' + cats.map(c =>
+  if (cats.length > 1) h += '<div class="chips scroll all-jump">' + cats.map(c =>
     `<button class="chip" data-act="allJump" data-c="${esc(c)}">${ICONS[c] || ''} ${esc(c)} <i>${cc[c]}</i></button>`).join('') + '</div>';
   if (!list.length) { view.innerHTML = h + '<p class="empty">Keine passenden Angebote.</p>'; return; }
   S.allOrder = cats;
@@ -1142,6 +1142,34 @@ function toast(msg, action) {
   toast.timer = setTimeout(() => { t.hidden = true; }, action ? 5000 : 2200);
 }
 
+// „Alle“: Schnellwahl klebt unter dem Kopf (Höhe als CSS-Variable) und zeigt die Kategorie an der aktuellen Stelle
+new ResizeObserver(() => document.documentElement.style.setProperty('--top-h', $('header.top').offsetHeight + 'px'))
+  .observe($('header.top'));
+function allMark() {
+  const bar = $('.all-jump');
+  if (!bar) return;
+  const line = $('header.top').offsetHeight + bar.offsetHeight + 12;
+  let cur = null;
+  for (const h of document.querySelectorAll('.cat-head')) { if (h.getBoundingClientRect().top <= line) cur = h.dataset.cat; else break; }
+  for (const b of bar.children) {
+    const on = b.dataset.c === cur;
+    if (on && !b.classList.contains('on')) bar.scrollTo({ left: b.offsetLeft - 16, behavior: 'smooth' });
+    b.classList.toggle('on', on);
+  }
+}
+// Knopf „nach oben“ ab etwas Scrollweg; in „Alle“ auch zurück an den Listenanfang
+const toTop = $('#toTop');
+const toTopUpdate = () => {
+  const r = route()[0];
+  toTop.hidden = r === 'add' || (window.scrollY < 700 && !(r === 'all' && S.allFrom));
+};
+window.addEventListener('scroll', () => { toTopUpdate(); allMark(); }, { passive: true });
+window.addEventListener('hashchange', () => setTimeout(toTopUpdate, 0));
+toTop.addEventListener('click', () => {
+  if (route()[0] === 'all' && S.allFrom) { S.allFrom = 0; S.limit = 60; render(); }
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+});
+
 // Endlos-Liste: „Weitere“-Knöpfe (data-auto) lösen selbst aus, sobald sie beim Scrollen in die Nähe kommen
 let autoBusy = false;
 function autoMore() {
@@ -1192,8 +1220,10 @@ const onClick = {
       head = find();
     }
     if (!head) return;
-    const top = $('header.top').offsetHeight;
-    window.scrollTo(0, head.getBoundingClientRect().top + window.scrollY - top - 6);
+    const top = $('header.top').offsetHeight + ($('.all-jump')?.offsetHeight || 0);
+    window.scrollTo(0, head.getBoundingClientRect().top + window.scrollY - top - 4);
+    allMark();
+    toTopUpdate();
   },
   sort: el => { S.sort = el.dataset.s; save('sort', S.sort); rerender(); },
   rt: el => {
