@@ -211,23 +211,136 @@ function liWordCat(name) {
   return null;
 }
 
-// passende aktuelle Angebote zu einem freien Eintrag (für Hinweis und Kategorie);
-// mit Kategorie nur Angebote dieser Einkaufs-Kategorie („Milch“ im Kühlregal, nicht Milchschokolade)
+/* ---------- Angebote zu freien Einträgen finden ----------
+   Regel je Eintrag: words (müssen vorkommen – Name, Marke, Gruppe oder Beschreibung), soft (Sortenwörter wie
+   „Zero“: nur Bonus in der Reihenfolge), brands (nur diese Marken), group („Kategorie\u0001Gruppe“).
+   Automatisch aus dem Namen abgeleitet; im Bearbeiten-Dialog je Name anpassbar (R.learn[name].match, abgeglichen). */
+
+// Sortenwörter: Angebote gelten meist für alle Sorten („Coca-Cola versch. Sorten“) -> kein Pflichtwort
+const LI_VARIANTS = new Set(('zero light classic original mini xxl xl sorten sorte versch verschiedene neu extra family ' +
+  'familienpackung vorratspackung').split(' ').map(nkey));
+// Namen, hinter denen eine andere Marke steht; keep = Wort muss trotzdem vorkommen (Ferrero ist mehr als Nutella)
+const LI_ALIASES = [
+  ['coke', ['cocacola']], ['cola zero', ['cocacola']], ['cola light', ['cocacola']], ['coca cola', ['cocacola']],
+  ['fanta', ['cocacola'], true], ['sprite', ['cocacola'], true], ['mezzo mix', ['cocacola'], true],
+  ['nutella', ['nutella', 'ferrero'], true], ['duplo', ['ferrero'], true], ['hanuta', ['ferrero'], true],
+  ['kinder schokolade', ['ferrero'], true], ['kinder riegel', ['ferrero'], true], ['kinder bueno', ['ferrero'], true],
+  ['raffaello', ['ferrero'], true], ['mon cheri', ['ferrero'], true], ['rocher', ['ferrero'], true],
+  ['knoppers', ['storck'], true], ['merci', ['merci', 'storck'], true], ['toffifee', ['storck'], true],
+  ['red bull', ['redbull']],
+].map(([w, brands, keep]) => ({ w: nkey(w), brands, keep: !!keep }));
+// allgemeine Warenwörter sind keine Marken, auch wenn ein Händler sie als Marke führt
+const LI_GENERIC = new Set(liWordRules.flatMap(([, ws]) => ws.map(w => w.t.replace(/ /g, ''))));
+
+const liHitAny = (o, t) => hit(t, o._ts, o._tw) || o._gs.includes(' ' + t) || hit(t, o._ds, o._dw);
+
+// Markennamen der aktuellen Angebote (normalisiert -> brand_key) und Anzeigenamen
+function liBrandIndex() {
+  if (LI.brandFor !== S.offers) {
+    LI.brandIdx = new Map();
+    LI.brandName = new Map();
+    for (const o of S.offers) {
+      if (!o.brand_key) continue;
+      LI.brandName.set(o.brand_key, o.brand);
+      const k = norm(o.brand).replace(/[^a-z0-9]/g, '');
+      if (o.brand_type === 'marke' && k.length >= 4 && !LI_GENERIC.has(k)) LI.brandIdx.set(k, o.brand_key);
+    }
+    LI.brandFor = S.offers;
+  }
+  return LI.brandIdx;
+}
+
+function liAutoRule(name) {
+  const text = ' ' + nkey(name) + ' ';
+  const toks = qTokens(name);
+  const used = new Set(), brands = new Set();
+  let keep = false;
+  for (const a of LI_ALIASES) {
+    if (!text.includes(' ' + a.w + ' ')) continue;
+    a.brands.forEach(b => brands.add(b));
+    if (a.keep) keep = true;
+    else a.w.split(' ').forEach(w => used.add(w));
+  }
+  // Marke am Namen erkennen, auch mehrteilig ("Coca Cola", "Red Bull")
+  const idx = liBrandIndex(), ws = nkey(name).split(' ');
+  for (let n = 3; n >= 1; n--) {
+    for (let i = 0; i + n <= ws.length; i++) {
+      const part = ws.slice(i, i + n);
+      if (part.some(w => used.has(w))) continue;
+      const b = idx.get(part.join(''));
+      if (b) { brands.add(b); part.forEach(w => used.add(w)); }
+    }
+  }
+  let words = toks.filter(t => !used.has(t) && !LI_VARIANTS.has(t));
+  let soft = toks.filter(t => !used.has(t) && LI_VARIANTS.has(t));
+  if (!brands.size && !words.length) { words = soft; soft = []; }
+  return { words, soft, brands: [...brands], group: null, auto: true, keep };
+}
+
+function liRuleFor(name) {
+  const m = R.learn.get(nkey(name));
+  if (m && !m.del && m.match) return { soft: [], ...m.match, auto: false };
+  return liAutoRule(name);
+}
+
+// passende aktuelle Angebote zu einem freien Eintrag (für Hinweis, Kategorie und Bearbeiten-Dialog);
+// automatisch und ohne Marke nur Angebote der Einkaufs-Kategorie („Milch“ ist keine Milchschokolade)
 function liMatches(name, cat) {
   if (!S.loaded) return [];
   if (LI.hintsFor !== S.offers) { LI.hints.clear(); LI.hintsFor = S.offers; }
   const k = nkey(name) + '|' + (cat || '');
   if (!LI.hints.has(k)) {
-    const qt = qTokens(name);
-    let m = qt.length ? visible().filter(o => matchQuery(o, qt)?.strong) : [];
-    if (cat && cat !== 'sonstiges') m = m.filter(o => (LI_OFFER_CAT[o.category] || 'sonstiges') === cat);
-    // genaueste Stufe verwenden: Wort = Produktgruppe, sonst ganzes Wort im Namen, sonst alle Treffer
-    const word = (s, t) => (s + ' ').includes(' ' + t + ' ');
-    const inGroup = m.filter(o => qt.every(t => word(spaced(norm(o.group)), t)));
-    const inName = m.filter(o => qt.every(t => word(o._ts, t)));
-    LI.hints.set(k, sortOffers(inGroup.length ? inGroup : inName.length ? inName : m, 'unit'));
+    const rule = liRuleFor(name);
+    let cand = visible();
+    if (rule.brands.length) cand = cand.filter(o => rule.brands.includes(o.brand_key));
+    if (rule.group) cand = cand.filter(o => o.category + '\u0001' + o.group === rule.group);
+    let m;
+    if (rule.words.length) m = cand.filter(o => rule.words.every(t => liHitAny(o, t)));
+    else m = rule.brands.length || rule.group ? cand : [];
+    // Marke erkannt, Restwort passt nicht ("Milka Schokolade" -> alle Milka-Angebote)
+    if (!m.length && rule.auto && rule.brands.length && !rule.keep) m = cand;
+    if (rule.auto && !rule.brands.length) {
+      if (cat && cat !== 'sonstiges') m = m.filter(o => (LI_OFFER_CAT[o.category] || 'sonstiges') === cat);
+      // genaueste Stufe: ganzes Wort im Namen, sonst Wort = Produktgruppe, sonst alle Treffer
+      const word = (s, t) => (s + ' ').includes(' ' + t + ' ');
+      const inGroup = m.filter(o => rule.words.every(t => word(spaced(norm(o.group)), t)));
+      const inName = m.filter(o => rule.words.every(t => word(o._ts, t)));
+      m = inName.length ? inName : inGroup.length ? inGroup : m;
+    }
+    m = sortOffers([...m], 'unit');
+    // Sortenwörter ("Zero") nach vorne, sonst Grundpreis-Reihenfolge
+    if (rule.soft.length) {
+      const score = o => rule.soft.filter(t => liHitAny(o, t)).length;
+      m = m.map((o, i) => [o, score(o), i]).sort((a, b) => b[1] - a[1] || a[2] - b[2]).map(x => x[0]);
+    }
+    LI.hints.set(k, m);
   }
   return LI.hints.get(k);
+}
+
+// Chips im Bearbeiten-Dialog: Wörter, Marken und Produktgruppen, über die Angebote gefunden werden
+function liMatchUI(it) {
+  if (!S.loaded) return '';
+  const rule = liRuleFor(it.name);
+  const toks = qTokens(it.name);
+  // Auswahl-Chips: nur echte Treffer am Wortanfang (ohne Tippfehler-Toleranz), sonst erscheinen z.B. „Colgate“ bei „Cola“
+  const pool = visible().filter(o => rule.brands.includes(o.brand_key) || toks.some(t => o._ts.includes(' ' + t) || o._gs.includes(' ' + t)));
+  if (!pool.length && !rule.brands.length) return '';
+  liBrandIndex();
+  const top = (arr, key) => Object.entries(countBy(arr, key)).sort((a, b) => b[1] - a[1]).map(x => x[0]);
+  const bList = [...new Set([...rule.brands, ...top(pool.filter(o => o.brand_key), o => o.brand_key).slice(0, 8)])];
+  const gList = [...new Set([...(rule.group ? [rule.group] : []), ...top(pool, o => o.category + '\u0001' + o.group).slice(0, 6)])];
+  const chip = (type, v, label, on) =>
+    `<button class="chip ${on ? 'on' : ''}" data-act="liMatch" data-t="${type}" data-v="${esc(v)}">${esc(label)}</button>`;
+  return `<h3 class="li-sec">Angebote finden über</h3><div class="li-match">
+    ${toks.length ? `<div class="li-mrow"><span>Wörter</span><div class="chips wrap">${toks.map(t => chip('word', t, t, rule.words.includes(t))).join('')}</div></div>` : ''}
+    ${bList.length ? `<div class="li-mrow"><span>Marke</span><div class="chips wrap">${bList.map(b => chip('brand', b, LI.brandName.get(b) || b, rule.brands.includes(b))).join('')}</div></div>` : ''}
+    ${gList.length ? `<div class="li-mrow"><span>Gruppe</span><div class="chips wrap">${gList.map(g => {
+      const [c, gr] = g.split('\u0001');
+      return chip('group', g, gr === OTHER ? c : gr, rule.group === g);
+    }).join('')}</div></div>` : ''}
+    <p class="sub li-mnote">${rule.auto ? 'Automatisch erkannt – antippen zum Anpassen' : `Eigene Zuordnung – gilt für „${esc(it.name)}“ auf allen Geräten`}
+      ${rule.auto ? '' : ' <button class="btn small" data-act="liMatchAuto">Automatisch</button>'}</p></div>`;
 }
 
 function liGuess(name) {
@@ -313,9 +426,10 @@ const Li = {
       offer: offerSnap(o), done: false, dt: null, by: Cloud.name() });
     toast('＋ Auf den Einkaufszettel');
   },
-  addWish(filter, label) {
+  addWish(filter, label, parsed) {
     const { id, ...fav } = filter;
-    put('item', { id: liNewId(), kind: 'wish', name: label, fav, qty: 1, unit: '', note: '', price: null, pm: null,
+    put('item', { id: liNewId(), kind: 'wish', name: label, fav, qty: parsed?.qty || 1, unit: parsed?.unit || '', note: '',
+      price: null, pm: null, prio: !!parsed?.prio,
       cat: LI_OFFER_CAT[fav.category] || liGuess(label), done: false, dt: null, by: Cloud.name() });
     toast(`＋ „${label}“ auf den Einkaufszettel`);
   },
@@ -339,9 +453,19 @@ function liPrice(it, best) {
   return { total: Math.round(each * mult * 100) / 100, app };
 }
 
+// Preis rechts in der Zeile; bei Wünschen (Favoriten, Produktgruppen) mit Grundpreis-Vergleich wie in den Favoriten:
+// Grundpreis groß, Packungspreis (× Menge) klein darunter
+function liPriceHtml(it, best, p) {
+  const cls = `li-p${p.app ? ' is-app' : ''}`;
+  if (it.kind === 'wish' && best?.eu && it.price == null && !byPack(it.fav)) {
+    return `<span class="${cls} li-p2">${fmt(best.eu)} €/${esc(best.unit)}<small>${fmt(p.total)} €</small></span>`;
+  }
+  return `<span class="${cls}">${fmt(p.total)} €</span>`;
+}
+
 const fmtQty = q => Number.isInteger(q) ? String(q) : q.toLocaleString('de-DE', { maximumFractionDigits: 2 });
 function qtyLabel(it) {
-  if (!it.qty) return it.unit || '';
+  if (!it.qty || (it.qty === 1 && !it.unit)) return it.unit || '';  // "1×" nicht anzeigen
   return it.unit ? `${fmtQty(it.qty)} ${it.unit}` : `${fmtQty(it.qty)}×`;
 }
 
@@ -376,7 +500,7 @@ function liRow(it, best) {
       <span class="li-ico" style="--c:${c.color}" title="${esc(c.name)}">${c.emoji}</span>
       <div class="li-t" data-act="liEdit" data-lid="${it.id}">${it.prio && !it.done ? '<b class="li-prio" title="wichtig">❗</b>' : ''}${esc(it.name)}${sub.length ? `<small>${sub.join(' · ')}</small>` : ''}</div>
       ${q ? `<span class="li-q">${esc(q)}</span>` : ''}
-      ${p ? `<span class="li-p${p.app ? ' is-app' : ''}">${fmt(p.total)} €</span>` : ''}
+      ${p ? liPriceHtml(it, best, p) : ''}
       <button class="check${it.done ? ' on' : ''}" data-act="liToggle" data-lid="${it.id}" aria-label="${it.done ? 'wieder auf den Zettel' : 'abhaken'}">✓</button>
     </div></div>`;
 }
@@ -505,6 +629,21 @@ function liSyncBadge() {
 
 /* ---------- Vorschläge beim Tippen ---------- */
 
+// Favoriten, die zu einem Namen passen (für Vorschläge und den Bearbeiten-Dialog)
+function liFavsFor(name) {
+  const toks = qTokens(name);
+  if (!toks.length || !S.favs.length) return [];
+  const q = nkey(name);
+  const offers = S.loaded ? liMatches(name) : [];
+  const score = f => {
+    const L = favLabel(f), title = nkey(`${L.title} ${f.q || ''} ${f.group || ''}`);
+    if (title.includes(q)) return 3;
+    if (toks.every(t => (' ' + title).includes(' ' + t))) return 2;
+    return offers.slice(0, 30).some(o => favMatch(f, o)) ? 1 : 0;
+  };
+  return S.favs.map(f => [f, score(f)]).filter(x => x[1]).sort((a, b) => b[1] - a[1]).map(x => x[0]);
+}
+
 function liSuggest() {
   const box = $('#liSug');
   if (!box) return;
@@ -521,8 +660,11 @@ function liSuggest() {
       for (const g of gs) if (g !== OTHER && nkey(g).includes(q)) groups.push([cat, g]);
     }
   }
-  if (!hist.length && !groups.length) { box.hidden = true; return; }
-  box.innerHTML = hist.map(h => `<button type="button" data-act="liSug" data-name="${esc(h.name)}">
+  const favs = liFavsFor(last.name).slice(0, 3);
+  if (!hist.length && !groups.length && !favs.length) { box.hidden = true; return; }
+  box.innerHTML = favs.map(f => `<button type="button" data-act="liSugFav" data-fid="${esc(f.id)}">
+      <span>★</span>${esc(favLabel(f).title)}<i>Favorit · ${byPack(f) ? 'Packungspreis' : 'Grundpreis'}</i></button>`).join('') +
+    hist.map(h => `<button type="button" data-act="liSug" data-name="${esc(h.name)}">
       <span>${catInfo(h.cat).emoji}</span>${esc(h.name)}<i>${openKeys.has(nkey(h.name)) ? '✓ auf dem Zettel' : h.c > 1 ? h.c + '×' : ''}</i></button>`).join('') +
     groups.slice(0, 3).map(([c, g]) => `<button type="button" data-act="liSugWish" data-c="${esc(c)}" data-g="${esc(g)}">
       <span>${ICONS[c] || '🏷️'}</span>${esc(g)}<i>Wunsch · günstigstes Angebot</i></button>`).join('');
@@ -546,8 +688,21 @@ function liEditSheet(it) {
       ${live ? `<br><button class="btn small" data-act="open" data-id="${esc(o.id)}">Angebot ansehen</button>` : '<br><small class="muted">nicht mehr in den aktuellen Angeboten</small>'}</div>`;
   } else {
     const m = it.kind === 'wish' ? sortOffers(visible().filter(o => favMatch(it.fav, o)), metricSort(it.fav)) : liMatches(it.name, catInfo(it.cat).id);
+    if (it.kind === 'free') {
+      const favs = liFavsFor(it.name).slice(0, 4);
+      if (favs.length) {
+        extra += `<h3 class="li-sec">★ Passende Favoriten</h3><div class="li-offers">${favs.map(f => {
+          const L = favLabel(f);
+          return `<div class="li-orow"><span>${L.icon}</span><span class="t">${esc(L.title)}<small>${esc(L.sub)} · Vergleich ${byPack(f) ? 'Packungspreis' : 'Grundpreis'}</small></span>
+            <button class="btn small" data-act="liUseFav" data-fid="${esc(f.id)}">verwenden</button></div>`;
+        }).join('')}</div>
+        <p class="sub">Der Eintrag zeigt dann immer das günstigste Angebot des Favoriten – mit dessen Preisvergleich.</p>`;
+      }
+      extra += liMatchUI(it);
+    }
+    if (it.kind === 'free' && !m.length) extra += '<p class="sub">Derzeit kein passendes Angebot.</p>';
     if (m.length) {
-      extra = `<h3 class="li-sec">${it.kind === 'wish' ? 'Passende Angebote (günstigstes wird verwendet)' : 'Passende Angebote'}</h3>
+      extra += `<h3 class="li-sec">${it.kind === 'wish' ? 'Passende Angebote (günstigstes wird verwendet)' : 'Passende Angebote'}</h3>
         <div class="li-offers">${m.slice(0, 6).map(o => `<div class="li-orow">
           <span class="rt" style="--c:${S.retailers[o.retailer]?.color}">${esc(rname(o))}</span>
           <span class="t" data-act="open" data-id="${esc(o.id)}">${esc(o.brand)} ${esc(o.name)}<small>${esc(priceLine(o))}${o.ea ? ' · 📱' : ''}</small></span>
@@ -719,7 +874,7 @@ const Sync = {
     } finally {
       LI.syncing = false;
       liSave();
-      if (changed) liRefresh();
+      if (changed) { LI.hints.clear(); liRefresh(); }  // auch geänderte Zuordnungen anderer Geräte
       liSyncBadge();
     }
   },
@@ -741,6 +896,30 @@ Object.assign(onClick, {
   },
   liEdit: el => { if (!swiped()) { const it = liById(el); if (it) liEditSheet(it); } },
   liView: el => { LI.view = el.dataset.v; save('li.view', LI.view); renderShop(); },
+  liMatch: el => {
+    const it = R.item.get(LI.editId);
+    if (!it) return;
+    const k = nkey(it.name), cur = liRuleFor(it.name);
+    const rule = { words: [...cur.words], soft: [], brands: [...cur.brands], group: cur.group };
+    const v = el.dataset.v;
+    const flip = (arr, x) => arr.includes(x) ? arr.filter(y => y !== x) : [...arr, x];
+    if (el.dataset.t === 'word') rule.words = flip(rule.words, v);
+    else if (el.dataset.t === 'brand') rule.brands = flip(rule.brands, v);
+    else rule.group = rule.group === v ? null : v;
+    put('learn', { ...(R.learn.get(k) || {}), id: k, del: false, match: rule });
+    LI.hints.clear();
+    liRefresh();
+    liEditSheet(it);
+  },
+  liMatchAuto: () => {
+    const it = R.item.get(LI.editId);
+    const l = it && R.learn.get(nkey(it.name));
+    if (!l) return;
+    put('learn', { ...l, match: null });
+    LI.hints.clear();
+    liRefresh();
+    liEditSheet(it);
+  },
   liSort: el => { LI.sort = el.dataset.s; save('li.sort', LI.sort); liBody(); },
   liDoneOpen: () => { LI.doneOpen = !LI.doneOpen; liBody(); },
   liMenu: () => liMenuSheet(),
@@ -756,6 +935,29 @@ Object.assign(onClick, {
     if (inp) { inp.value = ''; inp.focus(); }
     $('#liSug').hidden = true;
     liRefresh();
+  },
+  liSugFav: el => {
+    const f = S.favs.find(x => x.id === el.dataset.fid);
+    if (!f) return;
+    const parts = liSplit(LI.draft), last = liParse(parts.pop() || '');
+    if (parts.length) liAddText(parts.join(' und '));
+    Li.addWish(f, favLabel(f).title, last);
+    LI.draft = '';
+    const inp = $('#liIn');
+    if (inp) { inp.value = ''; inp.focus(); }
+    $('#liSug').hidden = true;
+    liRefresh();
+  },
+  liUseFav: el => {
+    const it = R.item.get(LI.editId), f = S.favs.find(x => x.id === el.dataset.fid);
+    if (!it || !f) return;
+    const { id, ...fav } = f;
+    Object.assign(it, { kind: 'wish', fav, price: null });
+    delete it.offer;
+    put('item', it);
+    liRefresh();
+    liEditSheet(it);
+    toast(`★ „${favLabel(f).title}“ verknüpft`);
   },
   liSugWish: el => {
     const c = el.dataset.c, g = el.dataset.g;
