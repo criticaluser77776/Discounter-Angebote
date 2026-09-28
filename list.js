@@ -2,7 +2,7 @@
 /* Einkaufszettel (Tab „Zettel“)
    - Einträge: frei („3 l Milch, 1,5 %“), konkretes Angebot oder Wunsch (Filter -> günstigstes aktuelles Angebot)
    - Menge + Einheit, Notiz, Kategorie (automatisch, änderbar, wird je Name gemerkt), Preis (aus Angebot oder manuell)
-   - eigene Einkaufs-Kategorien mit Symbol/Farbe in Laden-Reihenfolge; Ansichten Einfach (Standard), Details, Kategorien
+   - eigene Einkaufs-Kategorien mit Symbol/Farbe in Laden-Reihenfolge; Ansichten Einfach (Standard) und Details, sortiert nach Kategorie/Eingabe/A–Z
    - „zuletzt abgehakt“, Wischgesten (rechts = abhaken, links = löschen), Rückgängig, Bildschirm bleibt an
    - Abgleich über Supabase (cloud.js): jede Zeile (Eintrag, Kategorie, Gelerntes, Historie) trägt ihre
      Änderungszeit u; neuere Stände gewinnen, gelöscht wird per del-Markierung. */
@@ -96,8 +96,8 @@ const R = Object.fromEntries(LI_KINDS.map(k => [k, new Map()]));
 const LI = {
   dirty: new Set(load('li.dirty', [])),
   cursor: load('li.cursor', null),
-  // Standard „Einfach“ (einmalig auch für bestehende Geräte umgestellt, Händler-Ansicht gibt es nicht mehr)
-  view: load('li.viewV2', false) && ['cat', 'plain', 'simple'].includes(load('li.view', 'simple')) ? load('li.view', 'simple') : 'simple',
+  // Ansicht „simple“ (Standard) oder „plain“ (Details); Händler- und Kategorien-Ansicht gibt es nicht mehr
+  view: load('li.viewV2', false) && load('li.view', 'simple') === 'plain' ? 'plain' : 'simple',
   sort: load('li.sort', 'cat'),   // Sortierung der Ansicht „Liste“
   prices: load('li.prices', true),
   wake: load('li.wake', true),
@@ -568,7 +568,6 @@ function qtyLabel(it) {
 
 // Ansicht „Einfach“: wie „Details“, aber nur Name (+ Menge) – keine Angebote, Preise, Notizen, „von“
 const liSimple = () => LI.view === 'simple';
-const liFlat = () => LI.view === 'plain' || LI.view === 'simple';
 const liShowPrices = () => LI.prices && !liSimple();
 
 function liRow(it, best) {
@@ -613,8 +612,7 @@ function renderShop() {
     <div id="liSug" class="li-sug" hidden></div>
     <div class="li-tools"><span class="seg">
       <button class="${LI.view === 'simple' ? 'on' : ''}" data-act="liView" data-v="simple">Einfach</button>
-      <button class="${LI.view === 'plain' ? 'on' : ''}" data-act="liView" data-v="plain">Details</button>
-      <button class="${LI.view === 'cat' ? 'on' : ''}" data-act="liView" data-v="cat">Kategorien</button></span>
+      <button class="${LI.view === 'plain' ? 'on' : ''}" data-act="liView" data-v="plain">Details</button></span>
       <button id="liSync" class="li-sync" data-act="liSyncInfo" hidden></button></div>
     <div id="liBody"></div>`;
   liBody();
@@ -645,8 +643,8 @@ function liBody() {
   } else if (!open.length) {
     h = '<p class="empty">Alles erledigt 🎉</p>';
   }
-  if (liFlat() && open.length) {
-    // nur Liste, ohne Überschriften: nach Kategorie (Laden-Reihenfolge), Eingabe (IDs beginnen mit der Uhrzeit)
+  if (open.length) {
+    // eine Liste ohne Überschriften, wichtige oben; sortiert nach Kategorie (Laden-Reihenfolge), Eingabe (IDs beginnen mit der Uhrzeit)
     // oder alphabetisch
     const byName = (a, b) => a.name.localeCompare(b.name, 'de');
     let sorter = LI.sort === 'added' ? (a, b) => a.id.localeCompare(b.id)
@@ -656,26 +654,6 @@ function liBody() {
     h += `<div class="li-sortbar">Sortierung <span class="seg">${[['cat', 'Kategorie'], ['added', 'Eingabe'], ['alpha', 'A–Z']]
       .map(([k, l]) => `<button class="${LI.sort === k ? 'on' : ''}" data-act="liSort" data-s="${k}">${l}</button>`).join('')}</span></div>
       <section class="li-group">${[...open].sort(sorter).map(it => liRow(it, best.get(it.id))).join('')}</section>`;
-  }
-  const prio = liFlat() ? [] : open.filter(it => it.prio);
-  if (prio.length) {
-    h += `<section class="li-group li-prio-group"><h3>❗ Wichtig<span class="li-gsum">${prio.length}</span></h3>
-      ${prio.sort((a, b) => catRank(a) - catRank(b) || a.name.localeCompare(b.name, 'de')).map(it => liRow(it, best.get(it.id))).join('')}</section>`;
-  }
-  const groups = new Map();
-  for (const it of liFlat() ? [] : open.filter(it => !it.prio)) {
-    const k = catInfo(it.cat).id;
-    if (!groups.has(k)) groups.set(k, []);
-    groups.get(k).push(it);
-  }
-  const keys = liCats().map(c => c.id).filter(k => groups.has(k));
-  for (const k of keys) {
-    const items = groups.get(k).sort((a, b) => catRank(a) - catRank(b) || a.name.localeCompare(b.name, 'de'));
-    const c = catInfo(k);
-    const title = `<span class="li-gdot" style="--c:${c.color}"></span>${c.emoji} ${esc(c.name)}`;
-    const gsum = liShowPrices() ? items.reduce((s, it) => s + (liPrice(it, best.get(it.id))?.total || 0), 0) : 0;
-    h += `<section class="li-group"><h3>${title}<span class="li-gsum">${gsum ? fmt(gsum) + ' €' : items.length}</span></h3>
-      ${items.map(it => liRow(it, best.get(it.id))).join('')}</section>`;
   }
   if (done.length) {
     done.sort((a, b) => (b.dt || 0) - (a.dt || 0));
