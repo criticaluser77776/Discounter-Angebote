@@ -173,6 +173,7 @@ function disc(o) {
   return old ? Math.round(100 * (1 - (normalPrice(o) ?? o.ep) / old)) : null;
 }
 const priceLine = o => o.eu ? `${fmt(o.eu)} €/${o.unit}` : `${fmt(o.ep)} €`;
+const RETAILER_ORDER = ['edeka', 'lidl', 'aldi', 'penny', 'rossmann', 'netto', 'rewe', 'combi'];
 const rname = o => S.retailers[o.retailer]?.name || o.retailer;
 
 function dshort(iso) {
@@ -1364,7 +1365,9 @@ async function loadData() {
   try {
     const j = await DATA.offers();
     S.offers = j.offers;
-    S.retailers = j.retailers;
+    // feste Reihenfolge der Händler (auch für bereits hochgeladene Daten); unbekannte hinten anhängen
+    const rank = k => { const i = RETAILER_ORDER.indexOf(k); return i < 0 ? 99 : i; };
+    S.retailers = Object.fromEntries(Object.entries(j.retailers).sort(([a], [b]) => rank(a) - rank(b)));
     S.categories = j.categories;
     S.groups = j.groups;
     S.places = j.places;
