@@ -98,7 +98,7 @@ const LI = {
   cursor: load('li.cursor', null),
   // Ansicht „simple“ (Standard) oder „plain“ (Details); Händler- und Kategorien-Ansicht gibt es nicht mehr
   view: load('li.viewV2', false) && load('li.view', 'simple') === 'plain' ? 'plain' : 'simple',
-  sort: load('li.sort', 'cat'),   // Sortierung der Ansicht „Liste“
+  sort: load('li.sortV2', false) ? load('li.sort', 'added') : 'added',  // Sortierung, Standard „Eingabe“ (einmalig für alle Geräte gesetzt)
   prices: load('li.prices', true),
   wake: load('li.wake', true),
   doneOpen: false,
@@ -651,7 +651,7 @@ function liBody() {
       : LI.sort === 'alpha' ? byName : (a, b) => catRank(a) - catRank(b) || byName(a, b);
     const s0 = sorter;
     sorter = (a, b) => !!b.prio - !!a.prio || s0(a, b);  // wichtige immer oben
-    h += `<div class="li-sortbar">Sortierung <span class="seg">${[['cat', 'Kategorie'], ['added', 'Eingabe'], ['alpha', 'A–Z']]
+    h += `<div class="li-sortbar">Sortierung <span class="seg">${[['added', 'Eingabe'], ['alpha', 'A–Z'], ['cat', 'Kategorie']]
       .map(([k, l]) => `<button class="${LI.sort === k ? 'on' : ''}" data-act="liSort" data-s="${k}">${l}</button>`).join('')}</span></div>
       <section class="li-group">${[...open].sort(sorter).map(it => liRow(it, best.get(it.id))).join('')}</section>`;
   }
@@ -1017,7 +1017,7 @@ Object.assign(onClick, {
     el.setAttribute('aria-pressed', String(LI.prioNext));
     $('#liIn')?.focus();
   },
-  liSort: el => { LI.sort = el.dataset.s; save('li.sort', LI.sort); liBody(); },
+  liSort: el => { LI.sort = el.dataset.s; save('li.sort', LI.sort); save('li.sortV2', true); liBody(); },
   liDoneOpen: () => { LI.doneOpen = !LI.doneOpen; liBody(); },
   liHistOpen: () => { LI.histOpen = !LI.histOpen; liBody(); },
   liHistSort: el => { LI.histSort = el.dataset.s; save('li.histSort', LI.histSort); liBody(); },
