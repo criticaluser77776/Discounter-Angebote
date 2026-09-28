@@ -469,3 +469,8 @@ pre.log {
 .top[hidden] { display: none; }
 body.no-top #view { padding-top: env(safe-area-inset-top); }
 .li-tools .li-lbl { font-size: .85rem; color: var(--muted); margin-right: -2px; }
+.li-qbar { display: flex; align-items: center; gap: 6px; padding: 8px 12px 10px 52px; background: var(--surface-2); border-bottom: 1px solid var(--line); }
+.li-qbar input { width: 72px; padding: 7px 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--text); text-align: center; font-size: 1rem; }
+.li-qbar select { padding: 7px 6px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--text); }
+.li-qbar .icon-btn { width: 34px; height: 34px; font-size: 1.1rem; }
+.li-qbar .li-qset { margin-left: auto; }

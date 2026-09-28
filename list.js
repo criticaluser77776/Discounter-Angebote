@@ -350,6 +350,8 @@ function liGuess(name) {
   const learned = R.learn.get(nkey(name));
   const ok = id => id && R.cat.has(id) && !R.cat.get(id).del;
   if (learned && !learned.del && ok(learned.cat)) return learned.cat;
+  const g = liGoodsCat.get(nkey(name));
+  if (ok(g)) return g;
   const w = liWordCat(name);
   if (ok(w)) return w;
   const c = countBy(liMatches(name).slice(0, 20), o => LI_OFFER_CAT[o.category] || 'sonstiges');
@@ -598,7 +600,19 @@ function liRow(it, best) {
       ${q ? `<span class="li-q">${esc(q)}</span>` : ''}
       ${p ? liPriceHtml(it, best, p) : ''}
       <button class="check${it.done ? ' on' : ''}" data-act="liToggle" data-lid="${it.id}" aria-label="${it.done ? 'wieder auf den Zettel' : 'abhaken'}">✓</button>
-    </div></div>`;
+    </div></div>${LI.qtyId === it.id && !it.done ? liQtyBar(it) : ''}`;
+}
+
+// Antippen eines Eintrags: Menge direkt ändern (− / Eingabe / + / Einheit), ⚙️ öffnet die Einstellungen
+function liQtyBar(it) {
+  const units = `<option value="">–</option>` + LI_UNITS.map(([u]) => `<option ${u === it.unit ? 'selected' : ''}>${u}</option>`).join('');
+  return `<div class="li-qbar" data-lid="${it.id}">
+    <button class="icon-btn" data-act="liQStep" data-lid="${it.id}" data-d="-1" aria-label="weniger">−</button>
+    <input data-liq="qty" data-lid="${it.id}" inputmode="decimal" value="${it.qty ? fmtQty(it.qty) : ''}" placeholder="Menge" aria-label="Menge">
+    <button class="icon-btn" data-act="liQStep" data-lid="${it.id}" data-d="1" aria-label="mehr">＋</button>
+    <select data-liq="unit" data-lid="${it.id}" aria-label="Einheit">${units}</select>
+    <button class="icon-btn li-qset" data-act="liQSet" data-lid="${it.id}" aria-label="Einstellungen">⚙️</button>
+  </div>`;
 }
 
 function renderShop() {
@@ -733,30 +747,68 @@ function liFavsFor(name) {
   return S.favs.map(f => [f, score(f)]).filter(x => x[1]).sort((a, b) => b[1] - a[1]).map(x => x[0]);
 }
 
+// Vorschläge beim Eintippen – Verfahren wie bei „Die Einkaufsliste“: Punkte je Treffer (genau 1000, Wortanfang 800,
+// Wortanfang innerhalb 700, irgendwo im Wort 600 − Länge; letzteres erst ab 2 Buchstaben) plus Gewicht der Quelle.
+// Quellen: eigener Verlauf (je Nutzung stärker) > Warenliste (goods.js) > Warengruppen der Angebote > Marken.
+// Nur Namen – keine Angebote, keine Kategorie-Auswahl.
+let liPool = null;
+const liGoodsCat = new Map();
+for (const [cat, list] of Object.entries(typeof LI_GOODS === 'object' ? LI_GOODS : {})) {
+  for (const n of list.split(',').map(s => s.trim()).filter(Boolean)) if (!liGoodsCat.has(nkey(n))) liGoodsCat.set(nkey(n), cat);
+}
+function liSugPool() {
+  if (liPool && liPool.n === S.offers.length) return liPool.items;
+  const items = new Map();
+  const add = (name, src, extra = {}) => { const k = nkey(name); if (k && !items.has(k)) items.set(k, { name, k, src, ...extra }); };
+  for (const [cat, list] of Object.entries(typeof LI_GOODS === 'object' ? LI_GOODS : {})) {
+    for (const n of list.split(',').map(s => s.trim()).filter(Boolean)) add(n, 'ware', { cat });
+  }
+  if (S.loaded) {
+    for (const [c, gs] of Object.entries(S.groups)) for (const g of gs) if (g !== OTHER) add(g, 'gruppe', { icon: ICONS[c] });
+    // Marken: nur echte Marken, die mehrfach in den Angeboten vorkommen
+    const brands = new Map();
+    for (const o of S.offers) if (o.brand && o.brand_type === 'marke') brands.set(o.brand, (brands.get(o.brand) || 0) + 1);
+    for (const [b, n] of brands) if (n >= 2 && b.length > 2) add(b, 'marke');
+  }
+  liPool = { n: S.offers.length, items: [...items.values()] };
+  return liPool.items;
+}
+function liSugScore(k, q) {
+  if (k === q) return 1000;
+  if (k.startsWith(q)) return 800;
+  const i = k.indexOf(q);
+  if (i < 0) return 0;
+  if (k[i - 1] === ' ') return 700;
+  return q.length >= 2 ? 600 - k.length : 0;
+}
 function liSuggest() {
   const box = $('#liSug');
   if (!box) return;
   const parts = liSplit(LI.draft);
   const last = parts.length && !/\s+und\s*$/i.test(LI.draft) ? liParse(parts[parts.length - 1]) : null;
   const q = last ? nkey(last.name) : '';
-  if (q.length < 2) { box.hidden = true; return; }
+  if (!q) { box.hidden = true; return; }
   const openKeys = new Set(liOpen().map(i => nkey(i.name)));
-  const hist = [...R.hist.values()].filter(h => !h.del && nkey(h.name).includes(q))
-    .sort((a, b) => nkey(b.name).startsWith(q) - nkey(a.name).startsWith(q) || b.c - a.c).slice(0, 6);
-  const groups = [];
-  if (S.loaded) {
-    for (const [cat, gs] of Object.entries(S.groups)) {
-      for (const g of gs) if (g !== OTHER && nkey(g).includes(q)) groups.push([cat, g]);
-    }
+  const res = new Map();
+  for (const h of R.hist.values()) {
+    if (h.del || !h.name) continue;
+    const k = nkey(h.name), s = liSugScore(k, q);
+    if (s) res.set(k, { name: h.name, k, src: 'hist', c: h.c || 1, cat: h.cat, score: s + 150 + Math.min(h.c || 1, 20) * 10 });
   }
-  const favs = liFavsFor(last.name).slice(0, 3);
-  if (!hist.length && !groups.length && !favs.length) { box.hidden = true; return; }
-  box.innerHTML = favs.map(f => `<button type="button" data-act="liSugFav" data-fid="${esc(f.id)}">
-      <span>★</span>${esc(favLabel(f).title)}<i>Favorit · ${byPack(f) ? 'Packungspreis' : 'Grundpreis'}</i></button>`).join('') +
-    hist.map(h => `<button type="button" data-act="liSug" data-name="${esc(h.name)}">
-      <span>${catInfo(h.cat).emoji}</span>${esc(h.name)}<i>${openKeys.has(nkey(h.name)) ? '✓ auf dem Zettel' : h.c > 1 ? h.c + '×' : ''}</i></button>`).join('') +
-    groups.slice(0, 3).map(([c, g]) => `<button type="button" data-act="liSugWish" data-c="${esc(c)}" data-g="${esc(g)}">
-      <span>${ICONS[c] || '🏷️'}</span>${esc(g)}<i>Wunsch · günstigstes Angebot</i></button>`).join('');
+  const bonus = { ware: 40, gruppe: 20, marke: 10 };
+  for (const x of liSugPool()) {
+    if (res.has(x.k)) continue;
+    const s = liSugScore(x.k, q);
+    if (s) res.set(x.k, { ...x, score: s + bonus[x.src] });
+  }
+  const top = [...res.values()].sort((a, b) => b.score - a.score || a.name.length - b.name.length).slice(0, 8);
+  if (!top.length || (top.length === 1 && top[0].k === q && top[0].src !== 'hist')) { box.hidden = true; return; }
+  const icon = x => x.src === 'hist' ? catInfo(x.cat).emoji : x.src === 'ware' ? catInfo(x.cat).emoji
+    : x.src === 'gruppe' ? (x.icon || '🛒') : '🏷️';
+  const label = x => openKeys.has(x.k) ? '✓ auf dem Zettel'
+    : x.src === 'hist' ? (x.c > 1 ? `${x.c}×` : 'Verlauf') : x.src === 'gruppe' ? 'Warengruppe' : x.src === 'marke' ? 'Marke' : '';
+  box.innerHTML = top.map(x => `<button type="button" data-act="liSug" data-name="${esc(x.name)}">
+      <span>${icon(x)}</span>${esc(x.name)}<i>${label(x)}</i></button>`).join('');
   box.hidden = false;
 }
 
@@ -985,7 +1037,24 @@ Object.assign(onClick, {
     if (it.done) toast(`✓ ${it.name}`, { label: 'Rückgängig', fn: () => { liSetDone(it, false); liRefresh(); } });
     liRefresh();
   },
-  liEdit: el => { if (!swiped()) { const it = liById(el); if (it) liEditSheet(it); } },
+  liEdit: el => {
+    if (swiped()) return;
+    const it = liById(el);
+    if (!it) return;
+    if (it.done) { liEditSheet(it); return; }
+    LI.qtyId = LI.qtyId === it.id ? null : it.id;  // erneut antippen schließt die Mengenleiste
+    liRefresh();  // ohne Fokus aufs Feld – die Tastatur kommt erst, wenn man ins Mengenfeld tippt
+  },
+  liQSet: el => { const it = liById(el); if (it) { LI.qtyId = null; liRefresh(); liEditSheet(it); } },
+  liQStep: el => {
+    const it = liById(el);
+    if (!it) return;
+    const step = LI_MEASURE.has(it.unit) ? (it.unit === 'g' || it.unit === 'ml' ? 100 : 0.5) : 1;
+    const next = Math.round(((it.qty || (Number(el.dataset.d) > 0 ? (it.unit ? 0 : 1) : step)) + Number(el.dataset.d) * step) * 100) / 100;
+    it.qty = next >= step ? next : (it.unit ? step : null);  // ohne Einheit: unter 1 = keine Mengenangabe
+    put('item', it);
+    liRefresh();
+  },
   liView: el => { LI.view = el.dataset.v; save('li.view', LI.view); save('li.viewV2', true); renderShop(); },
   liMatch: el => {
     const it = R.item.get(LI.editId);
@@ -1193,6 +1262,16 @@ document.addEventListener('input', e => {
 document.addEventListener('change', e => {
   const el = e.target;
   if (el.dataset.li) { clearTimeout(LI.editTimer); liEditField(el); return; }
+  if (el.dataset.liq) {
+    const it = R.item.get(el.dataset.lid);
+    if (!it) return;
+    const v = el.value.trim();
+    if (el.dataset.liq === 'qty') it.qty = v ? (toNum(v) > 0 ? toNum(v) : it.qty) : null;
+    else it.unit = v;
+    put('item', it);
+    liRefresh();
+    return;
+  }
   if (el.dataset.liset) {
     LI[el.dataset.liset] = el.checked;
     save('li.' + el.dataset.liset, el.checked);

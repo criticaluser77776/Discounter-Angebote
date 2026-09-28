@@ -1,3 +1,3 @@
 // Erzeugt von tools/deploy_pages.py – nicht von Hand ändern.
 window.APP_CONFIG = {"source": "supabase", "supabaseUrl": "https://dsvxlpbysjksmphurtvj.supabase.co", "supabaseKey": "sb_publishable_BDYxfFK1IsfFn5eEz4SmeQ_yEaHBRqk"};
-window.APP_VERSION = {"number": 36, "built": "2026-09-28T20:18:24+02:00"};
+window.APP_VERSION = {"number": 37, "built": "2026-09-28T21:12:01+02:00"};
