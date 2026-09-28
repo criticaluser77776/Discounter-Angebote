@@ -1363,7 +1363,67 @@ const onClick = {
   },
 };
 
+// Nach rechts wischen: Angebotskarte bzw. Favorit landet auf dem Einkaufszettel (Favorit mit seinem eigenen Namen)
+let swAddUntil = 0;
+(() => {
+  let sw = null;
+  const view = $('#view');
+  view.addEventListener('pointerdown', e => {
+    if (e.button > 0 || route()[0] === 'list' || e.target.closest('button, input, select, a, .fav-drag, .fav-settings')) return;
+    const el = e.target.closest('.card') || e.target.closest('.fav-h')?.closest('.fav');
+    if (!el) return;
+    sw = { el, x: e.clientX, y: e.clientY, dx: 0, active: false, id: e.pointerId };
+  });
+  view.addEventListener('pointermove', e => {
+    if (!sw || e.pointerId !== sw.id) return;
+    const dx = e.clientX - sw.x, dy = e.clientY - sw.y;
+    if (!sw.active) {
+      if (dx > 12 && dx > Math.abs(dy) * 1.5) {
+        sw.active = true;
+        try { sw.el.setPointerCapture(e.pointerId); } catch { /* egal */ }
+        const r = sw.el.getBoundingClientRect();
+        sw.hint = document.createElement('div');
+        sw.hint.className = 'sw-hint';
+        sw.hint.textContent = '＋ Zettel';
+        Object.assign(sw.hint.style, { top: r.top + window.scrollY + 'px', left: r.left + window.scrollX + 'px', width: r.width + 'px', height: r.height + 'px' });
+        document.body.appendChild(sw.hint);
+        sw.el.classList.add('sw-moving');
+      } else if (Math.abs(dy) > 12 || dx < -12) { sw = null; return; } else return;
+    }
+    sw.dx = Math.max(0, dx);
+    sw.el.style.transform = `translateX(${sw.dx}px)`;
+    sw.hint.classList.toggle('go', sw.dx > Math.min(110, sw.el.offsetWidth * 0.3));
+  });
+  const end = () => {
+    if (!sw) return;
+    const s = sw;
+    sw = null;
+    if (!s.active) return;
+    swAddUntil = Date.now() + 400;  // folgenden Klick (Detailansicht öffnen) unterdrücken
+    const go = s.dx > Math.min(110, s.el.offsetWidth * 0.3);
+    s.el.style.transition = 'transform .15s';
+    s.el.style.transform = '';
+    setTimeout(() => { s.el.style.transition = ''; s.el.classList.remove('sw-moving'); s.hint.remove(); }, 160);
+    if (!go) return;
+    if (s.el.classList.contains('card')) {
+      const o = S.byId.get(s.el.dataset.id);
+      if (!o) return;
+      if (Li.hasOffer(o)) toast('Schon auf dem Einkaufszettel');
+      else Li.toggleOffer(o);
+    } else {
+      const f = S.favs.find(x => x.id === s.el.dataset.fid);
+      if (!f) return;
+      if (Li.favWish(f)) toast(`„${favLabel(f).title}“ ist schon auf dem Einkaufszettel`);
+      else Li.addWish(f, favLabel(f).title, {});
+    }
+    setTimeout(rerender, 170);
+  };
+  view.addEventListener('pointerup', end);
+  view.addEventListener('pointercancel', end);
+})();
+
 document.addEventListener('click', e => {
+  if (Date.now() < swAddUntil && e.target.closest('#view')) { e.preventDefault(); e.stopPropagation(); return; }
   const el = e.target.closest('[data-act]');
   if (!el) return;
   const fn = onClick[el.dataset.act];

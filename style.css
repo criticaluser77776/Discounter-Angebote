@@ -472,3 +472,8 @@ body.no-top #view { padding-top: env(safe-area-inset-top); }
 .li-qin { width: 84px; flex: none; padding: 6px 8px; border: 1px solid var(--accent); border-radius: 8px; background: var(--surface);
   color: var(--text); font-weight: 700; font-size: .95rem; text-align: right; }
 .check.li-qset { font-size: 1.3rem; color: var(--text); border-color: transparent; background: none; }
+.card, .fav { touch-action: pan-y; }
+.sw-moving { position: relative; z-index: 2; }
+.sw-hint { position: absolute; z-index: 1; border-radius: var(--radius); display: flex; align-items: center; padding-left: 18px;
+  background: color-mix(in srgb, var(--accent) 35%, var(--surface)); color: var(--text); font-weight: 700; pointer-events: none; }
+.sw-hint.go { background: var(--accent); color: var(--accent-text); }
