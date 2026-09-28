@@ -99,6 +99,7 @@ const LI = {
   view: load('li.view', 'cat'),
   sort: load('li.sort', 'cat'),   // Sortierung der Ansicht „Liste“
   prices: load('li.prices', true),
+  simple: load('li.simple', false),  // einfache Ansicht: nur Name (+ Menge), keine Angebote, Preise, „von“
   wake: load('li.wake', true),
   doneOpen: false,
   draft: '',
@@ -378,6 +379,14 @@ function liBought(it) {
 }
 
 // einmalig: vorhandene Einträge (auch gelöschte/abgehakte) in den Verlauf übernehmen
+// Eintrag aus dem Verlauf entfernen (kommt zurück, sobald er wieder auf den Zettel gesetzt wird)
+function liHistDelete(h) {
+  h.del = true;
+  put('hist', h);
+  liRefresh();
+  toast(`Aus Verlauf entfernt: ${h.name}`, { label: 'Rückgängig', fn: () => { h.del = false; put('hist', h); liRefresh(); } });
+}
+
 function liHistBackfill() {
   if (load('li.histFilled', false)) return;
   for (const it of R.item.values()) {
@@ -562,12 +571,13 @@ function liRetailerOf(it, best) {
   return best?.retailer || '_any';
 }
 
+const liShowPrices = () => LI.prices && !LI.simple;
+
 function liRow(it, best) {
   const c = catInfo(it.cat);
-  const p = LI.prices ? liPrice(it, best) : null;
+  const p = liShowPrices() ? liPrice(it, best) : null;
   const sub = [];
-  if (it.note) sub.push(esc(it.note));
-  if (it.kind === 'offer') {
+  if (LI.simple) { /* nur der Name */ } else if (it.kind === 'offer') {
     const o = it.offer;
     const expired = o.valid_to && o.valid_to < today();
     sub.push(`<span class="rt" style="--c:${S.retailers[o.retailer]?.color || '#888'}">${esc(S.retailers[o.retailer]?.name || o.retailer)}</span>` +
@@ -580,7 +590,8 @@ function liRow(it, best) {
     const m = liMatches(it.name, catInfo(it.cat).id);
     if (m.length) sub.push(`<span class="li-hint">💡 im Angebot: ${esc(rname(m[0]))} ${esc(priceLine(m[0]))}${m.length > 1 ? ` · ${m.length} Angebote` : ''}</span>`);
   }
-  if (Cloud.enabled && it.by && it.by !== Cloud.name()) sub.push(`von ${esc(it.by)}`);
+  if (it.note && !LI.simple) sub.unshift(esc(it.note));
+  if (!LI.simple && Cloud.enabled && it.by && it.by !== Cloud.name()) sub.push(`von ${esc(it.by)}`);
   const q = qtyLabel(it);
   return `<div class="li-row${it.done ? ' done' : ''}${it.prio && !it.done ? ' prio' : ''}" data-lid="${it.id}">
     <div class="li-bg"><span class="li-bg-done">✓ ${it.done ? 'zurück' : 'erledigt'}</span><span class="li-bg-del">Löschen 🗑</span></div>
@@ -626,7 +637,7 @@ function liBody() {
     if (p) { total += p.total; priced++; }
   }
   const sum = $('#liSum');
-  if (sum) sum.innerHTML = open.length ? `${open.length} offen${LI.prices && priced ? ` · ${priced < open.length ? 'ca. ' : ''}<b>${fmt(total)} €</b>` : ''}` : '';
+  if (sum) sum.innerHTML = open.length ? `${open.length} offen${liShowPrices() && priced ? ` · ${priced < open.length ? 'ca. ' : ''}<b>${fmt(total)} €</b>` : ''}` : '';
 
   let h = '';
   if (!open.length && !done.length) {
@@ -673,7 +684,7 @@ function liBody() {
       const c = catInfo(k);
       title = `<span class="li-gdot" style="--c:${c.color}"></span>${c.emoji} ${esc(c.name)}`;
     }
-    const gsum = LI.prices ? items.reduce((s, it) => s + (liPrice(it, best.get(it.id))?.total || 0), 0) : 0;
+    const gsum = liShowPrices() ? items.reduce((s, it) => s + (liPrice(it, best.get(it.id))?.total || 0), 0) : 0;
     h += `<section class="li-group"><h3>${title}<span class="li-gsum">${gsum ? fmt(gsum) + ' €' : items.length}</span></h3>
       ${items.map(it => liRow(it, best.get(it.id))).join('')}</section>`;
   }
@@ -697,7 +708,8 @@ function liBody() {
         .map(([k, l]) => `<button class="${(LI.histSort || 'last') === k ? 'on' : ''}" data-act="liHistSort" data-s="${k}">${l}</button>`).join('')}</span></div>` +
         hist.sort(sorter).slice(0, LI.histAll ? 1000 : 60).map(x => {
           const c = catInfo(x.cat);
-          return `<div class="li-row"><div class="li-fg">
+          return `<div class="li-row" data-hid="${esc(x.id)}">
+            <div class="li-bg"><span class="li-bg-done"></span><span class="li-bg-del">Aus Verlauf entfernen 🗑</span></div><div class="li-fg">
             <span class="li-ico" style="--c:${c.color}">${c.emoji}</span>
             <div class="li-t">${esc(x.name)}<small>${x.fav ? '★ Wunsch · ' : ''}${x.c || 1}× auf dem Zettel${x.b ? ` · ${x.b}× gekauft, zuletzt ${d(x.bought)}` : ` · zuletzt ${d(x.last)}`}</small></div>
             <button class="ic add" data-act="liHistAdd" data-hid="${esc(x.id)}" aria-label="Wieder auf den Zettel">＋</button>
@@ -890,7 +902,8 @@ function liMenuSheet() {
   const canWake = 'wakeLock' in navigator;
   openSheet(`<div class="grab"></div><div class="head"><h2>Einkaufszettel</h2></div>
     <div class="panel">
-      <label class="line switch"><input type="checkbox" data-liset="prices" ${LI.prices ? 'checked' : ''}> Preise anzeigen</label>
+      <label class="line switch"><input type="checkbox" data-liset="simple" ${LI.simple ? 'checked' : ''}> Einfache Ansicht (nur Einträge, ohne Angebote, Preise und „von“)</label>
+      <label class="line switch"><input type="checkbox" data-liset="prices" ${LI.prices ? 'checked' : ''} ${LI.simple ? 'disabled' : ''}> Preise anzeigen</label>
       <label class="line switch"><input type="checkbox" data-liset="wake" ${LI.wake ? 'checked' : ''} ${canWake ? '' : 'disabled'}>
         Bildschirm bleibt beim Einkaufen an${canWake ? '' : ' (von diesem Browser nicht unterstützt)'}</label>
     </div>
@@ -1217,6 +1230,8 @@ document.addEventListener('change', e => {
   if (el.dataset.liset) {
     LI[el.dataset.liset] = el.checked;
     save('li.' + el.dataset.liset, el.checked);
+    const pr = document.querySelector('[data-liset="prices"]');
+    if (pr) pr.disabled = LI.simple;
     liRefresh();
     return;
   }
@@ -1234,7 +1249,7 @@ document.addEventListener('change', e => {
 (() => {
   let sw = null;
   view.addEventListener('pointerdown', e => {
-    const fg = e.target.closest('.li-row[data-lid] .li-fg');  // nur Zettel-Einträge, nicht der Verlauf
+    const fg = e.target.closest('.li-row[data-lid] .li-fg, .li-row[data-hid] .li-fg');  // Zettel und Verlauf
     if (!fg || e.button > 0 || e.target.closest('button')) return;
     sw = { fg, row: fg.parentElement, x: e.clientX, y: e.clientY, dx: 0, active: false, id: e.pointerId };
   });
@@ -1248,10 +1263,10 @@ document.addEventListener('change', e => {
         sw.row.classList.add('swiping');
       } else if (Math.abs(dy) > 12) { sw = null; return; } else return;
     }
-    sw.dx = dx;
-    sw.fg.style.transform = `translateX(${dx}px)`;
-    sw.row.classList.toggle('to-done', dx > 0);
-    sw.row.classList.toggle('to-del', dx < 0);
+    sw.dx = sw.row.dataset.hid ? Math.min(0, dx) : dx;  // Verlauf: nur nach links (entfernen)
+    sw.fg.style.transform = `translateX(${sw.dx}px)`;
+    sw.row.classList.toggle('to-done', sw.dx > 0);
+    sw.row.classList.toggle('to-del', sw.dx < 0);
   });
   const end = () => {
     if (!sw) return;
@@ -1259,9 +1274,11 @@ document.addEventListener('change', e => {
     sw = null;
     if (!s.active) return;
     LI.suppress = Date.now();
-    const it = R.item.get(s.row.dataset.lid);
     const limit = Math.min(110, s.row.offsetWidth * 0.3);
     s.row.classList.remove('swiping');
+    const hx = s.row.dataset.hid && R.hist.get(s.row.dataset.hid);
+    if (hx && s.dx < -limit) { liHistDelete(hx); return; }
+    const it = R.item.get(s.row.dataset.lid);
     if (it && s.dx > limit) {
       liSetDone(it, !it.done);
       if (it.done) toast(`✓ ${it.name}`, { label: 'Rückgängig', fn: () => { liSetDone(it, false); liRefresh(); } });
