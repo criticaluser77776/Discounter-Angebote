@@ -466,3 +466,4 @@ pre.log {
 .to-top[hidden] { display: none; }
 .top[hidden] { display: none; }
 body.no-top #view { padding-top: env(safe-area-inset-top); }
+.li-tools .li-lbl { font-size: .85rem; color: var(--muted); margin-right: -2px; }

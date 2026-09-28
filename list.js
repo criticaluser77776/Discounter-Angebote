@@ -610,7 +610,7 @@ function renderShop() {
         aria-pressed="${LI.prioNext}" aria-label="Als wichtig hinzufügen" title="Nächsten Eintrag als wichtig hinzufügen">❗</button>
       <button class="btn primary" aria-label="Hinzufügen">＋</button></form>
     <div id="liSug" class="li-sug" hidden></div>
-    <div class="li-tools"><span class="seg">
+    <div class="li-tools"><span class="li-lbl">Ansicht</span><span class="seg">
       <button class="${LI.view === 'simple' ? 'on' : ''}" data-act="liView" data-v="simple">Einfach</button>
       <button class="${LI.view === 'plain' ? 'on' : ''}" data-act="liView" data-v="plain">Details</button></span>
       <button id="liSync" class="li-sync" data-act="liSyncInfo" hidden></button></div>
