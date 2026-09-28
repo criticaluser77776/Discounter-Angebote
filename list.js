@@ -592,28 +592,30 @@ function liRow(it, best) {
   if (it.note && !liSimple()) sub.unshift(esc(it.note));
   if (!liSimple() && Cloud.enabled && it.by && it.by !== Cloud.name()) sub.push(`von ${esc(it.by)}`);
   const q = qtyLabel(it);
+  const qe = LI.qtyId === it.id && !it.done;  // angetippt: Menge als Textfeld, ⚙️ statt Abhaken
   return `<div class="li-row${it.done ? ' done' : ''}${it.prio && !it.done ? ' prio' : ''}" data-lid="${it.id}">
     <div class="li-bg"><span class="li-bg-done">✓ ${it.done ? 'zurück' : 'erledigt'}</span><span class="li-bg-del">Löschen 🗑</span></div>
     <div class="li-fg">
       <span class="li-ico" style="--c:${c.color}" title="${esc(c.name)}">${c.emoji}</span>
       <div class="li-t" data-act="liEdit" data-lid="${it.id}">${it.prio && !it.done ? '<b class="li-prio" title="wichtig">❗</b>' : ''}${esc(it.name)}${sub.length ? `<small>${sub.join(' · ')}</small>` : ''}</div>
-      ${q ? `<span class="li-q">${esc(q)}</span>` : ''}
-      ${p ? liPriceHtml(it, best, p) : ''}
-      <button class="check${it.done ? ' on' : ''}" data-act="liToggle" data-lid="${it.id}" aria-label="${it.done ? 'wieder auf den Zettel' : 'abhaken'}">✓</button>
-    </div></div>${LI.qtyId === it.id && !it.done ? liQtyBar(it) : ''}`;
+      ${qe ? `<input class="li-qin" data-liq="text" data-lid="${it.id}" value="${esc(q)}" placeholder="Menge" enterkeyhint="done" aria-label="Menge, z.B. 2 kg">`
+        : q ? `<span class="li-q">${esc(q)}</span>` : ''}
+      ${p && !qe ? liPriceHtml(it, best, p) : ''}
+      ${qe ? `<button class="check li-qset" data-act="liQSet" data-lid="${it.id}" aria-label="Einstellungen">⚙️</button>`
+        : `<button class="check${it.done ? ' on' : ''}" data-act="liToggle" data-lid="${it.id}" aria-label="${it.done ? 'wieder auf den Zettel' : 'abhaken'}">✓</button>`}
+    </div></div>`;
 }
 
-// Antippen eines Eintrags: Menge direkt ändern (− / Eingabe / + / Einheit), ⚙️ öffnet die Einstellungen
-function liQtyBar(it) {
-  const units = `<option value="">–</option>` + LI_UNITS.map(([u]) => `<option ${u === it.unit ? 'selected' : ''}>${u}</option>`).join('');
-  return `<div class="li-qbar" data-lid="${it.id}">
-    <button class="icon-btn" data-act="liQStep" data-lid="${it.id}" data-d="-1" aria-label="weniger">−</button>
-    <input data-liq="qty" data-lid="${it.id}" inputmode="decimal" value="${it.qty ? fmtQty(it.qty) : ''}" placeholder="Menge" aria-label="Menge">
-    <button class="icon-btn" data-act="liQStep" data-lid="${it.id}" data-d="1" aria-label="mehr">＋</button>
-    <select data-liq="unit" data-lid="${it.id}" aria-label="Einheit">${units}</select>
-    <button class="icon-btn li-qset" data-act="liQSet" data-lid="${it.id}" aria-label="Einstellungen">⚙️</button>
-  </div>`;
+// Mengenfeld: „2,5 kg“, „3“, „3x“, „2 Pck“ → Menge + Einheit (bekannte Einheiten vereinheitlicht)
+function liQtyParse(s) {
+  const m = s.trim().match(/^(\d+(?:[.,]\d+)?)?\s*(.*)$/);
+  const qty = m[1] ? toNum(m[1]) : null;
+  let unit = m[2].trim().replace(/\.$/, '');
+  if (/^[x×]$/i.test(unit)) unit = '';
+  else unit = LI_UNIT_MAP[unit.toLowerCase()] || unit.slice(0, 12);
+  return { qty: qty > 0 ? qty : null, unit: qty > 0 || unit ? unit : '' };
 }
+
 
 function renderShop() {
   view.innerHTML = `<div class="head li-head"><h2>📝 Einkaufszettel</h2><span id="liSum" class="li-sum"></span>
@@ -1042,19 +1044,13 @@ Object.assign(onClick, {
     const it = liById(el);
     if (!it) return;
     if (it.done) { liEditSheet(it); return; }
-    LI.qtyId = LI.qtyId === it.id ? null : it.id;  // erneut antippen schließt die Mengenleiste
-    liRefresh();  // ohne Fokus aufs Feld – die Tastatur kommt erst, wenn man ins Mengenfeld tippt
+    if (LI.qtyClosed?.id === it.id && Date.now() - LI.qtyClosed.t < 500) return;
+    LI.qtyId = LI.qtyId === it.id ? null : it.id;  // erneut antippen schließt das Mengenfeld
+    liRefresh();
+    if (LI.qtyId) { const inp = $(`.li-qin[data-lid="${it.id}"]`); if (inp) { inp.focus(); inp.select(); } }
   },
   liQSet: el => { const it = liById(el); if (it) { LI.qtyId = null; liRefresh(); liEditSheet(it); } },
-  liQStep: el => {
-    const it = liById(el);
-    if (!it) return;
-    const step = LI_MEASURE.has(it.unit) ? (it.unit === 'g' || it.unit === 'ml' ? 100 : 0.5) : 1;
-    const next = Math.round(((it.qty || (Number(el.dataset.d) > 0 ? (it.unit ? 0 : 1) : step)) + Number(el.dataset.d) * step) * 100) / 100;
-    it.qty = next >= step ? next : (it.unit ? step : null);  // ohne Einheit: unter 1 = keine Mengenangabe
-    put('item', it);
-    liRefresh();
-  },
+
   liView: el => { LI.view = el.dataset.v; save('li.view', LI.view); save('li.viewV2', true); renderShop(); },
   liMatch: el => {
     const it = R.item.get(LI.editId);
@@ -1259,16 +1255,21 @@ document.addEventListener('input', e => {
   }
 });
 
+document.addEventListener('keydown', e => {
+  if (e.key === 'Enter' && e.target.dataset?.liq) { e.preventDefault(); e.target.blur(); }
+  if (e.key === 'Escape' && e.target.dataset?.liq) { LI.qtyId = null; e.target.dataset.liq = ''; liRefresh(); }
+});
+
 document.addEventListener('change', e => {
   const el = e.target;
   if (el.dataset.li) { clearTimeout(LI.editTimer); liEditField(el); return; }
   if (el.dataset.liq) {
     const it = R.item.get(el.dataset.lid);
     if (!it) return;
-    const v = el.value.trim();
-    if (el.dataset.liq === 'qty') it.qty = v ? (toNum(v) > 0 ? toNum(v) : it.qty) : null;
-    else it.unit = v;
+    Object.assign(it, liQtyParse(el.value));
     put('item', it);
+    LI.qtyId = null;
+    LI.qtyClosed = { id: it.id, t: Date.now() };  // Tipp auf den Namen, der das Feld verlassen hat, nicht wieder öffnen
     liRefresh();
     return;
   }
