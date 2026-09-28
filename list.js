@@ -751,8 +751,8 @@ function liFavsFor(name) {
 
 // Vorschläge beim Eintippen – Verfahren wie bei „Die Einkaufsliste“: Punkte je Treffer (genau 1000, Wortanfang 800,
 // Wortanfang innerhalb 700, irgendwo im Wort 600 − Länge; letzteres erst ab 2 Buchstaben) plus Gewicht der Quelle.
-// Quellen: eigener Verlauf (je Nutzung stärker) > Warenliste (goods.js) > Warengruppen der Angebote > Marken.
-// Nur Namen – keine Angebote, keine Kategorie-Auswahl.
+// Quellen: ★-Favoriten > eigener Verlauf (je Nutzung stärker) > Warenliste (goods.js) > Warengruppen der Angebote > Marken.
+// Außer Favoriten (Wunsch mit Preisvergleich) nur Namen – keine Angebote, keine Kategorie-Auswahl.
 let liPool = null;
 const liGoodsCat = new Map();
 for (const [cat, list] of Object.entries(typeof LI_GOODS === 'object' ? LI_GOODS : {})) {
@@ -792,10 +792,15 @@ function liSuggest() {
   if (!q) { box.hidden = true; return; }
   const openKeys = new Set(liOpen().map(i => nkey(i.name)));
   const res = new Map();
+  // eigene ★-Favoriten zuerst (unter ihrem eigenen Namen, landen als Wunsch mit Preisvergleich auf dem Zettel)
+  for (const f of S.favs) {
+    const name = favLabel(f).title, k = nkey(name), s = liSugScore(k, q);
+    if (s) res.set(k, { name, k, src: 'fav', fid: f.id, icon: favLabel(f).icon, score: s + 400 });
+  }
   for (const h of R.hist.values()) {
     if (h.del || !h.name) continue;
     const k = nkey(h.name), s = liSugScore(k, q);
-    if (s) res.set(k, { name: h.name, k, src: 'hist', c: h.c || 1, cat: h.cat, score: s + 150 + Math.min(h.c || 1, 20) * 10 });
+    if (s && !res.has(k)) res.set(k, { name: h.name, k, src: 'hist', c: h.c || 1, cat: h.cat, score: s + 150 + Math.min(h.c || 1, 20) * 10 });
   }
   const bonus = { ware: 40, gruppe: 20, marke: 10 };
   for (const x of liSugPool()) {
@@ -805,11 +810,11 @@ function liSuggest() {
   }
   const top = [...res.values()].sort((a, b) => b.score - a.score || a.name.length - b.name.length).slice(0, 8);
   if (!top.length || (top.length === 1 && top[0].k === q && top[0].src !== 'hist')) { box.hidden = true; return; }
-  const icon = x => x.src === 'hist' ? catInfo(x.cat).emoji : x.src === 'ware' ? catInfo(x.cat).emoji
+  const icon = x => x.src === 'fav' ? '★' : x.src === 'hist' ? catInfo(x.cat).emoji : x.src === 'ware' ? catInfo(x.cat).emoji
     : x.src === 'gruppe' ? (x.icon || '🛒') : '🏷️';
-  const label = x => openKeys.has(x.k) ? '✓ auf dem Zettel'
+  const label = x => openKeys.has(x.k) ? '✓ auf dem Zettel' : x.src === 'fav' ? 'Favorit'
     : x.src === 'hist' ? (x.c > 1 ? `${x.c}×` : 'Verlauf') : x.src === 'gruppe' ? 'Warengruppe' : x.src === 'marke' ? 'Marke' : '';
-  box.innerHTML = top.map(x => `<button type="button" data-act="liSug" data-name="${esc(x.name)}">
+  box.innerHTML = top.map(x => `<button type="button" ${x.src === 'fav' ? `data-act="liSugFav" data-fid="${esc(x.fid)}"` : 'data-act="liSug"'} data-name="${esc(x.name)}">
       <span>${icon(x)}</span>${esc(x.name)}<i>${label(x)}</i></button>`).join('');
   box.hidden = false;
 }
@@ -1114,7 +1119,8 @@ Object.assign(onClick, {
     if (!f) return;
     const parts = liSplit(LI.draft), last = liParse(parts.pop() || '');
     if (parts.length) liAddText(parts.join(' und '));
-    Li.addWish(f, favLabel(f).title, { ...last, prio: last.prio || liTakePrio() });
+    if (Li.favWish(f)) toast(`„${favLabel(f).title}“ ist schon auf dem Einkaufszettel`);
+    else Li.addWish(f, favLabel(f).title, { ...last, prio: last.prio || liTakePrio() });
     LI.draft = '';
     const inp = $('#liIn');
     if (inp) { inp.value = ''; inp.focus(); }
