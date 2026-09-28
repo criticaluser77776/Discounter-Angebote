@@ -404,3 +404,6 @@ pre.log {
   background: var(--text); color: var(--bg); padding: 9px 16px; border-radius: 999px; font-size: .88rem; z-index: 60;
   max-width: calc(100% - 32px);
 }
+.li-prio-group h3 { background: var(--red-soft); color: var(--red); }
+.li-prio { margin-right: 4px; font-size: .85em; }
+.li-row.prio .li-t { font-weight: 600; }

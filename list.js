@@ -186,6 +186,8 @@ const LI_RX = {
 // "3 l Milch, 1,5 %" -> {name: "Milch, 1,5 %", qty: 3, unit: "l"}; Text hinter einem Komma gehört zum Namen
 function liParse(text) {
   let s = text.trim(), extra = '';
+  const prio = s.startsWith('!');  // "!Milch" = wichtig
+  if (prio) s = s.replace(/^!+\s*/, '');
   const cm = s.match(/(?<!\d),|,(?=\s)/);
   if (cm) { extra = s.slice(cm.index + 1).trim(); s = s.slice(0, cm.index).trim(); }
   let qty = null, unit = '', m;
@@ -195,7 +197,7 @@ function liParse(text) {
   else if ((m = s.match(LI_RX.numFirst))) { qty = toNum(m[1]); s = m[2]; }
   else if ((m = s.match(LI_RX.numLast)) && (!m[3] || u(m[3]))) { s = m[1]; qty = toNum(m[2]); unit = m[3] ? u(m[3]) : ''; }
   if (qty !== null && !(qty > 0)) qty = null;
-  return { name: (s + (extra ? ', ' + extra : '')).trim(), qty, unit };
+  return { name: (s + (extra ? ', ' + extra : '')).trim(), qty, unit, prio };
 }
 const liSplit = text => text.split(/\s+und\s+|\s*;\s*|\s*\n\s*|\s+\+\s+/i).map(s => s.trim()).filter(Boolean);
 
@@ -249,10 +251,11 @@ function liRemember(it) {
   put('hist', h);
 }
 
-function liAddFree(name, qty, unit) {
+function liAddFree(name, qty, unit, prio = false) {
   const k = nkey(name);
   const ex = liItems().find(i => nkey(i.name) === k);
   if (ex) {
+    if (prio) ex.prio = true;
     if (ex.done) {
       Object.assign(ex, { done: false, dt: null });
       if (qty) Object.assign(ex, { qty, unit });
@@ -267,7 +270,7 @@ function liAddFree(name, qty, unit) {
     liRemember(ex);
     return ex;
   }
-  const it = { id: liNewId(), kind: 'free', name, qty, unit: unit || '', note: '', cat: liGuess(name),
+  const it = { id: liNewId(), kind: 'free', name, qty, unit: unit || '', note: '', prio: !!prio, cat: liGuess(name),
     price: null, pm: null, done: false, dt: null, by: Cloud.name() };
   put('item', it);
   liRemember(it);
@@ -275,7 +278,7 @@ function liAddFree(name, qty, unit) {
 }
 
 function liAddText(text) {
-  const added = liSplit(text).map(p => liParse(p)).filter(p => p.name).map(p => liAddFree(p.name, p.qty, p.unit));
+  const added = liSplit(text).map(p => liParse(p)).filter(p => p.name).map(p => liAddFree(p.name, p.qty, p.unit, p.prio));
   return added.length;
 }
 
@@ -367,11 +370,11 @@ function liRow(it, best) {
   }
   if (Cloud.enabled && it.by && it.by !== Cloud.name()) sub.push(`von ${esc(it.by)}`);
   const q = qtyLabel(it);
-  return `<div class="li-row${it.done ? ' done' : ''}" data-lid="${it.id}">
+  return `<div class="li-row${it.done ? ' done' : ''}${it.prio && !it.done ? ' prio' : ''}" data-lid="${it.id}">
     <div class="li-bg"><span class="li-bg-done">✓ ${it.done ? 'zurück' : 'erledigt'}</span><span class="li-bg-del">Löschen 🗑</span></div>
     <div class="li-fg">
       <span class="li-ico" style="--c:${c.color}" title="${esc(c.name)}">${c.emoji}</span>
-      <div class="li-t" data-act="liEdit" data-lid="${it.id}">${esc(it.name)}${sub.length ? `<small>${sub.join(' · ')}</small>` : ''}</div>
+      <div class="li-t" data-act="liEdit" data-lid="${it.id}">${it.prio && !it.done ? '<b class="li-prio" title="wichtig">❗</b>' : ''}${esc(it.name)}${sub.length ? `<small>${sub.join(' · ')}</small>` : ''}</div>
       ${q ? `<span class="li-q">${esc(q)}</span>` : ''}
       ${p ? `<span class="li-p${p.app ? ' is-app' : ''}">${fmt(p.total)} €</span>` : ''}
       <button class="check${it.done ? ' on' : ''}" data-act="liToggle" data-lid="${it.id}" aria-label="${it.done ? 'wieder auf den Zettel' : 'abhaken'}">✓</button>
@@ -413,7 +416,7 @@ function liBody() {
 
   let h = '';
   if (!open.length && !done.length) {
-    h = `<p class="empty">Der Zettel ist leer.<br><br>Oben eintippen, was du brauchst – z.B. „3 l Milch und 6 Eier“.
+    h = `<p class="empty">Der Zettel ist leer.<br><br>Oben eintippen, was du brauchst – z.B. „3 l Milch und 6 Eier“; mit „!“ davor (z.B. „!Brot“) steht ein Eintrag als wichtig immer oben.
       Bei Angeboten fügt ＋ das Angebot hinzu; in Produktgruppen und Favoriten legt „＋ Zettel“ einen Wunsch an,
       für den immer das günstigste aktuelle Angebot angezeigt wird.</p>`;
   } else if (!open.length) {
@@ -423,15 +426,22 @@ function liBody() {
     // nur Liste, ohne Überschriften: nach Kategorie (Laden-Reihenfolge), Eingabe (IDs beginnen mit der Uhrzeit)
     // oder alphabetisch
     const byName = (a, b) => a.name.localeCompare(b.name, 'de');
-    const sorter = LI.sort === 'added' ? (a, b) => a.id.localeCompare(b.id)
+    let sorter = LI.sort === 'added' ? (a, b) => a.id.localeCompare(b.id)
       : LI.sort === 'alpha' ? byName : (a, b) => catRank(a) - catRank(b) || byName(a, b);
+    const s0 = sorter;
+    sorter = (a, b) => !!b.prio - !!a.prio || s0(a, b);  // wichtige immer oben
     h += `<div class="li-sortbar">Sortierung <span class="seg">${[['cat', 'Kategorie'], ['added', 'Eingabe'], ['alpha', 'A–Z']]
       .map(([k, l]) => `<button class="${LI.sort === k ? 'on' : ''}" data-act="liSort" data-s="${k}">${l}</button>`).join('')}</span></div>
       <section class="li-group">${[...open].sort(sorter).map(it => liRow(it, best.get(it.id))).join('')}</section>`;
   }
+  const prio = LI.view === 'plain' ? [] : open.filter(it => it.prio);
+  if (prio.length) {
+    h += `<section class="li-group li-prio-group"><h3>❗ Wichtig<span class="li-gsum">${prio.length}</span></h3>
+      ${prio.sort((a, b) => catRank(a) - catRank(b) || a.name.localeCompare(b.name, 'de')).map(it => liRow(it, best.get(it.id))).join('')}</section>`;
+  }
   const groups = new Map();
   const keyOf = it => LI.view === 'shop' ? liRetailerOf(it, best.get(it.id)) : catInfo(it.cat).id;
-  for (const it of LI.view === 'plain' ? [] : open) {
+  for (const it of LI.view === 'plain' ? [] : open.filter(it => !it.prio)) {
     const k = keyOf(it);
     if (!groups.has(k)) groups.set(k, []);
     groups.get(k).push(it);
@@ -545,6 +555,7 @@ function liEditSheet(it) {
     <label class="li-f">Kategorie<select data-li="cat">${catOpts}</select></label>
     <label class="li-f">Preis (€)<input data-li="price" inputmode="decimal" value="${it.price != null ? fmt(it.price) : ''}"
       placeholder="${auto != null ? 'aus Angebot: ' + fmt(auto) : 'optional'}"></label>
+    <label class="switch li-f"><input type="checkbox" data-li="prio" ${it.prio ? 'checked' : ''}> ❗ Wichtig – steht immer oben</label>
     <label class="switch li-f"><input type="checkbox" data-li="fixed" ${it.pm === 'fixed' ? 'checked' : ''}> Einzelpreis – nicht mit der Menge multiplizieren</label>
     ${extra}
     <div class="actions"><button class="btn danger" data-act="liDelEdit">Löschen</button>
@@ -562,6 +573,7 @@ function liEditField(el) {
   else if (f === 'note') it.note = v;
   else if (f === 'price') it.price = v ? (Number.isFinite(toNum(v)) ? toNum(v) : it.price) : null;
   else if (f === 'fixed') it.pm = el.checked ? 'fixed' : null;
+  else if (f === 'prio') it.prio = el.checked;
   else if (f === 'cat') {
     it.cat = v;
     const k = nkey(it.name);
@@ -637,7 +649,7 @@ function liShareText() {
       const best = liBest(it);
       const where = it.kind === 'offer' ? ` (${S.retailers[it.offer.retailer]?.name || it.offer.retailer} ${fmt(it.offer.price)} €)`
         : best ? ` (${rname(best)}: ${best.brand} ${best.name} ${fmt(best.ep)} €)` : '';
-      lines.push(`- ${qtyLabel(it) ? qtyLabel(it) + ' ' : ''}${it.name}${it.note ? ' – ' + it.note : ''}${where}`);
+      lines.push(`- ${it.prio ? '❗ ' : ''}${qtyLabel(it) ? qtyLabel(it) + ' ' : ''}${it.name}${it.note ? ' – ' + it.note : ''}${where}`);
     }
   }
   return lines.join('\n');
@@ -725,7 +737,7 @@ Object.assign(onClick, {
     const parts = liSplit(LI.draft);
     const last = liParse(parts.pop() || '');
     const q = last.qty ? `${fmtQty(last.qty)}${last.unit ? ' ' + last.unit : ''} ` : '';
-    liAddText([...parts, q + el.dataset.name].join(' und '));
+    liAddText([...parts, (last.prio ? '!' : '') + q + el.dataset.name].join(' und '));
     LI.draft = '';
     const inp = $('#liIn');
     if (inp) { inp.value = ''; inp.focus(); }
