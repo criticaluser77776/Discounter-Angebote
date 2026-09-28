@@ -675,9 +675,10 @@ function liBody() {
       ${LI.doneOpen ? done.slice(0, 60).map(it => liRow(it, null)).join('') +
         '<div class="li-done-acts"><button class="btn small" data-act="liClearDone">Abgehakte entfernen</button></div>' : ''}</section>`;
   }
-  const hist = [...R.hist.values()].filter(x => !x.del && x.name);
+  // Verlauf ohne die Einträge, die gerade offen auf dem Zettel stehen
+  const openKeys = new Set(open.map(i => nkey(i.name)));
+  const hist = [...R.hist.values()].filter(x => !x.del && x.name && !openKeys.has(nkey(x.name)));
   if (hist.length) {
-    const openKeys = new Set(open.map(i => nkey(i.name)));
     const d = ts => ts ? new Date(ts).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: '2-digit' }) : '';
     const sorter = LI.histSort === 'freq' ? (a, b) => (b.c || 0) - (a.c || 0) || (b.last || 0) - (a.last || 0)
       : LI.histSort === 'alpha' ? (a, b) => a.name.localeCompare(b.name, 'de') : (a, b) => (b.last || 0) - (a.last || 0);
@@ -686,12 +687,11 @@ function liBody() {
       ${LI.histOpen ? `<div class="li-sortbar" style="padding:8px 14px 4px">Sortierung <span class="seg">${[['last', 'Zuletzt'], ['freq', 'Häufig'], ['alpha', 'A–Z']]
         .map(([k, l]) => `<button class="${(LI.histSort || 'last') === k ? 'on' : ''}" data-act="liHistSort" data-s="${k}">${l}</button>`).join('')}</span></div>` +
         hist.sort(sorter).slice(0, LI.histAll ? 1000 : 60).map(x => {
-          const c = catInfo(x.cat), on = openKeys.has(nkey(x.name));
+          const c = catInfo(x.cat);
           return `<div class="li-row"><div class="li-fg">
             <span class="li-ico" style="--c:${c.color}">${c.emoji}</span>
             <div class="li-t">${esc(x.name)}<small>${x.fav ? '★ Wunsch · ' : ''}${x.c || 1}× auf dem Zettel${x.b ? ` · ${x.b}× gekauft, zuletzt ${d(x.bought)}` : ` · zuletzt ${d(x.last)}`}</small></div>
-            ${on ? '<span class="li-q muted">auf dem Zettel</span>'
-              : `<button class="ic add" data-act="liHistAdd" data-hid="${esc(x.id)}" aria-label="Wieder auf den Zettel">＋</button>`}
+            <button class="ic add" data-act="liHistAdd" data-hid="${esc(x.id)}" aria-label="Wieder auf den Zettel">＋</button>
           </div></div>`;
         }).join('') + (hist.length > 60 && !LI.histAll ? '<div class="li-done-acts"><button class="btn small" data-act="liHistAll">Alle anzeigen</button></div>' : '') : ''}</section>`;
   }
