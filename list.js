@@ -2,7 +2,7 @@
 /* Einkaufszettel (Tab „Zettel“)
    - Einträge: frei („3 l Milch, 1,5 %“), konkretes Angebot oder Wunsch (Filter -> günstigstes aktuelles Angebot)
    - Menge + Einheit, Notiz, Kategorie (automatisch, änderbar, wird je Name gemerkt), Preis (aus Angebot oder manuell)
-   - eigene Einkaufs-Kategorien mit Symbol/Farbe in Laden-Reihenfolge; Ansicht nach Kategorie oder Händler
+   - eigene Einkaufs-Kategorien mit Symbol/Farbe in Laden-Reihenfolge; Ansichten Kategorien, Liste, Einfach
    - „zuletzt abgehakt“, Wischgesten (rechts = abhaken, links = löschen), Rückgängig, Bildschirm bleibt an
    - Abgleich über Supabase (cloud.js): jede Zeile (Eintrag, Kategorie, Gelerntes, Historie) trägt ihre
      Änderungszeit u; neuere Stände gewinnen, gelöscht wird per del-Markierung. */
@@ -96,7 +96,7 @@ const R = Object.fromEntries(LI_KINDS.map(k => [k, new Map()]));
 const LI = {
   dirty: new Set(load('li.dirty', [])),
   cursor: load('li.cursor', null),
-  view: load('li.view', 'cat'),
+  view: ['cat', 'plain', 'simple'].includes(load('li.view', 'cat')) ? load('li.view', 'cat') : 'cat',  // Händler-Ansicht entfernt
   sort: load('li.sort', 'cat'),   // Sortierung der Ansicht „Liste“
   prices: load('li.prices', true),
   wake: load('li.wake', true),
@@ -565,11 +565,6 @@ function qtyLabel(it) {
   return it.unit ? `${fmtQty(it.qty)} ${it.unit}` : `${fmtQty(it.qty)}×`;
 }
 
-function liRetailerOf(it, best) {
-  if (it.kind === 'offer') return it.offer.retailer;
-  return best?.retailer || '_any';
-}
-
 // Ansicht „Einfach“: wie „Liste“, aber nur Name (+ Menge) – keine Angebote, Preise, Notizen, „von“
 const liSimple = () => LI.view === 'simple';
 const liFlat = () => LI.view === 'plain' || LI.view === 'simple';
@@ -617,7 +612,6 @@ function renderShop() {
     <div id="liSug" class="li-sug" hidden></div>
     <div class="li-tools"><span class="seg">
       <button class="${LI.view === 'cat' ? 'on' : ''}" data-act="liView" data-v="cat">Kategorien</button>
-      <button class="${LI.view === 'shop' ? 'on' : ''}" data-act="liView" data-v="shop">Händler</button>
       <button class="${LI.view === 'plain' ? 'on' : ''}" data-act="liView" data-v="plain">Liste</button>
       <button class="${LI.view === 'simple' ? 'on' : ''}" data-act="liView" data-v="simple">Einfach</button></span>
       <button id="liSync" class="li-sync" data-act="liSyncInfo" hidden></button></div>
@@ -668,25 +662,16 @@ function liBody() {
       ${prio.sort((a, b) => catRank(a) - catRank(b) || a.name.localeCompare(b.name, 'de')).map(it => liRow(it, best.get(it.id))).join('')}</section>`;
   }
   const groups = new Map();
-  const keyOf = it => LI.view === 'shop' ? liRetailerOf(it, best.get(it.id)) : catInfo(it.cat).id;
   for (const it of liFlat() ? [] : open.filter(it => !it.prio)) {
-    const k = keyOf(it);
+    const k = catInfo(it.cat).id;
     if (!groups.has(k)) groups.set(k, []);
     groups.get(k).push(it);
   }
-  const keys = LI.view === 'shop'
-    ? [...Object.keys(S.retailers), '_any'].filter(k => groups.has(k)).concat([...groups.keys()].filter(k => k !== '_any' && !S.retailers[k]))
-    : liCats().map(c => c.id).filter(k => groups.has(k));
+  const keys = liCats().map(c => c.id).filter(k => groups.has(k));
   for (const k of keys) {
     const items = groups.get(k).sort((a, b) => catRank(a) - catRank(b) || a.name.localeCompare(b.name, 'de'));
-    let title;
-    if (LI.view === 'shop') {
-      const r = S.retailers[k];
-      title = r ? `<span class="rt" style="--c:${r.color}">${esc(r.name)}</span>` : 'Beliebiger Laden';
-    } else {
-      const c = catInfo(k);
-      title = `<span class="li-gdot" style="--c:${c.color}"></span>${c.emoji} ${esc(c.name)}`;
-    }
+    const c = catInfo(k);
+    const title = `<span class="li-gdot" style="--c:${c.color}"></span>${c.emoji} ${esc(c.name)}`;
     const gsum = liShowPrices() ? items.reduce((s, it) => s + (liPrice(it, best.get(it.id))?.total || 0), 0) : 0;
     h += `<section class="li-group"><h3>${title}<span class="li-gsum">${gsum ? fmt(gsum) + ' €' : items.length}</span></h3>
       ${items.map(it => liRow(it, best.get(it.id))).join('')}</section>`;
