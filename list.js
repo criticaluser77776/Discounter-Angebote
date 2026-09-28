@@ -99,7 +99,6 @@ const LI = {
   view: load('li.view', 'cat'),
   sort: load('li.sort', 'cat'),   // Sortierung der Ansicht „Liste“
   prices: load('li.prices', true),
-  simple: load('li.simple', false),  // einfache Ansicht: nur Name (+ Menge), keine Angebote, Preise, „von“
   wake: load('li.wake', true),
   doneOpen: false,
   draft: '',
@@ -571,13 +570,16 @@ function liRetailerOf(it, best) {
   return best?.retailer || '_any';
 }
 
-const liShowPrices = () => LI.prices && !LI.simple;
+// Ansicht „Einfach“: wie „Liste“, aber nur Name (+ Menge) – keine Angebote, Preise, Notizen, „von“
+const liSimple = () => LI.view === 'simple';
+const liFlat = () => LI.view === 'plain' || LI.view === 'simple';
+const liShowPrices = () => LI.prices && !liSimple();
 
 function liRow(it, best) {
   const c = catInfo(it.cat);
   const p = liShowPrices() ? liPrice(it, best) : null;
   const sub = [];
-  if (LI.simple) { /* nur der Name */ } else if (it.kind === 'offer') {
+  if (liSimple()) { /* nur der Name */ } else if (it.kind === 'offer') {
     const o = it.offer;
     const expired = o.valid_to && o.valid_to < today();
     sub.push(`<span class="rt" style="--c:${S.retailers[o.retailer]?.color || '#888'}">${esc(S.retailers[o.retailer]?.name || o.retailer)}</span>` +
@@ -590,8 +592,8 @@ function liRow(it, best) {
     const m = liMatches(it.name, catInfo(it.cat).id);
     if (m.length) sub.push(`<span class="li-hint">💡 im Angebot: ${esc(rname(m[0]))} ${esc(priceLine(m[0]))}${m.length > 1 ? ` · ${m.length} Angebote` : ''}</span>`);
   }
-  if (it.note && !LI.simple) sub.unshift(esc(it.note));
-  if (!LI.simple && Cloud.enabled && it.by && it.by !== Cloud.name()) sub.push(`von ${esc(it.by)}`);
+  if (it.note && !liSimple()) sub.unshift(esc(it.note));
+  if (!liSimple() && Cloud.enabled && it.by && it.by !== Cloud.name()) sub.push(`von ${esc(it.by)}`);
   const q = qtyLabel(it);
   return `<div class="li-row${it.done ? ' done' : ''}${it.prio && !it.done ? ' prio' : ''}" data-lid="${it.id}">
     <div class="li-bg"><span class="li-bg-done">✓ ${it.done ? 'zurück' : 'erledigt'}</span><span class="li-bg-del">Löschen 🗑</span></div>
@@ -616,7 +618,8 @@ function renderShop() {
     <div class="li-tools"><span class="seg">
       <button class="${LI.view === 'cat' ? 'on' : ''}" data-act="liView" data-v="cat">Kategorien</button>
       <button class="${LI.view === 'shop' ? 'on' : ''}" data-act="liView" data-v="shop">Händler</button>
-      <button class="${LI.view === 'plain' ? 'on' : ''}" data-act="liView" data-v="plain">Liste</button></span>
+      <button class="${LI.view === 'plain' ? 'on' : ''}" data-act="liView" data-v="plain">Liste</button>
+      <button class="${LI.view === 'simple' ? 'on' : ''}" data-act="liView" data-v="simple">Einfach</button></span>
       <button id="liSync" class="li-sync" data-act="liSyncInfo" hidden></button></div>
     <div id="liBody"></div>`;
   liBody();
@@ -647,7 +650,7 @@ function liBody() {
   } else if (!open.length) {
     h = '<p class="empty">Alles erledigt 🎉</p>';
   }
-  if (LI.view === 'plain' && open.length) {
+  if (liFlat() && open.length) {
     // nur Liste, ohne Überschriften: nach Kategorie (Laden-Reihenfolge), Eingabe (IDs beginnen mit der Uhrzeit)
     // oder alphabetisch
     const byName = (a, b) => a.name.localeCompare(b.name, 'de');
@@ -659,14 +662,14 @@ function liBody() {
       .map(([k, l]) => `<button class="${LI.sort === k ? 'on' : ''}" data-act="liSort" data-s="${k}">${l}</button>`).join('')}</span></div>
       <section class="li-group">${[...open].sort(sorter).map(it => liRow(it, best.get(it.id))).join('')}</section>`;
   }
-  const prio = LI.view === 'plain' ? [] : open.filter(it => it.prio);
+  const prio = liFlat() ? [] : open.filter(it => it.prio);
   if (prio.length) {
     h += `<section class="li-group li-prio-group"><h3>❗ Wichtig<span class="li-gsum">${prio.length}</span></h3>
       ${prio.sort((a, b) => catRank(a) - catRank(b) || a.name.localeCompare(b.name, 'de')).map(it => liRow(it, best.get(it.id))).join('')}</section>`;
   }
   const groups = new Map();
   const keyOf = it => LI.view === 'shop' ? liRetailerOf(it, best.get(it.id)) : catInfo(it.cat).id;
-  for (const it of LI.view === 'plain' ? [] : open.filter(it => !it.prio)) {
+  for (const it of liFlat() ? [] : open.filter(it => !it.prio)) {
     const k = keyOf(it);
     if (!groups.has(k)) groups.set(k, []);
     groups.get(k).push(it);
@@ -902,8 +905,7 @@ function liMenuSheet() {
   const canWake = 'wakeLock' in navigator;
   openSheet(`<div class="grab"></div><div class="head"><h2>Einkaufszettel</h2></div>
     <div class="panel">
-      <label class="line switch"><input type="checkbox" data-liset="simple" ${LI.simple ? 'checked' : ''}> Einfache Ansicht (nur Einträge, ohne Angebote, Preise und „von“)</label>
-      <label class="line switch"><input type="checkbox" data-liset="prices" ${LI.prices ? 'checked' : ''} ${LI.simple ? 'disabled' : ''}> Preise anzeigen</label>
+      <label class="line switch"><input type="checkbox" data-liset="prices" ${LI.prices ? 'checked' : ''} ${liSimple() ? 'disabled' : ''}> Preise anzeigen</label>
       <label class="line switch"><input type="checkbox" data-liset="wake" ${LI.wake ? 'checked' : ''} ${canWake ? '' : 'disabled'}>
         Bildschirm bleibt beim Einkaufen an${canWake ? '' : ' (von diesem Browser nicht unterstützt)'}</label>
     </div>
@@ -1230,8 +1232,6 @@ document.addEventListener('change', e => {
   if (el.dataset.liset) {
     LI[el.dataset.liset] = el.checked;
     save('li.' + el.dataset.liset, el.checked);
-    const pr = document.querySelector('[data-liset="prices"]');
-    if (pr) pr.disabled = LI.simple;
     liRefresh();
     return;
   }
