@@ -144,8 +144,10 @@ function applyEff() {
 /* ---------- Gebiet & Händler (je Gruppe vom Admin, lokal im Server-Modus) ---------- */
 
 const RADII = [5, 10, 15, 20, 30, 0];  // km, 0 = ganzer Großraum
+const ROUTE_WIDTHS = [1, 2, 3, 5, 8];   // Korridor links/rechts der Strecke in km
 const grpSet = () => Cloud.enabled ? Cloud.settings() : load('grpSet', {});
 const canEditArea = () => !Cloud.enabled || Cloud.isAdmin();
+const placeOf = k => S.places.find(p => p.key === k);
 
 function kmBetween(a, b) {
   const r = Math.PI / 180, dLat = (b.lat - a.lat) * r, dLng = (b.lng - a.lng) * r;
@@ -153,11 +155,71 @@ function kmBetween(a, b) {
   return 12742 * Math.asin(Math.sqrt(h));
 }
 
-// Orte im Umkreis (null = alle; ältere Daten ohne Koordinaten: alle)
+// Abstand (km) von Punkt p {lat,lng} zur Strecke a–b ([lat,lng]), eben genähert (reicht für wenige km)
+function segKm(p, a, b) {
+  const kx = 111.32 * Math.cos(p.lat * Math.PI / 180), ky = 110.57;
+  const ax = (a[1] - p.lng) * kx, ay = (a[0] - p.lat) * ky, dx = (b[1] - a[1]) * kx, dy = (b[0] - a[0]) * ky;
+  const l = dx * dx + dy * dy;
+  const u = l ? Math.max(0, Math.min(1, -(ax * dx + ay * dy) / l)) : 0;
+  return Math.hypot(ax + u * dx, ay + u * dy);
+}
+const lineKm = (p, line) => line.length === 1 ? segKm(p, line[0], line[0])
+  : Math.min(...line.slice(1).map((b, i) => segKm(p, line[i], b)));
+
+// Linie vereinfachen (Douglas-Peucker, Toleranz in km), damit sie klein in den Gruppeneinstellungen liegt
+function simplifyLine(pts, tol) {
+  if (pts.length < 3) return pts;
+  const keep = new Uint8Array(pts.length);
+  keep[0] = keep[pts.length - 1] = 1;
+  const stack = [[0, pts.length - 1]];
+  while (stack.length) {
+    const [i, j] = stack.pop();
+    let max = 0, at = -1;
+    for (let k = i + 1; k < j; k++) {
+      const d = segKm({ lat: pts[k][0], lng: pts[k][1] }, pts[i], pts[j]);
+      if (d > max) { max = d; at = k; }
+    }
+    if (max > tol) { keep[at] = 1; stack.push([i, at], [at, j]); }
+  }
+  return pts.filter((_, k) => keep[k]);
+}
+
+// Straßenroute über die Stopps (OSRM auf OpenStreetMap-Basis; es werden nur Ortskoordinaten gesendet)
+async function routeCompute(stops) {
+  const pts = stops.map(placeOf).filter(p => p?.lat != null);
+  const url = 'https://router.project-osrm.org/route/v1/driving/' + pts.map(p => `${p.lng},${p.lat}`).join(';')
+    + '?overview=full&geometries=geojson';
+  const j = await (await fetch(url)).json();
+  if (j.code !== 'Ok' || !j.routes?.length) throw new Error(j.message || 'keine Route');
+  const r = j.routes[0];
+  const line = simplifyLine(r.geometry.coordinates.map(([lng, lat]) => [+lat.toFixed(4), +lng.toFixed(4)]), 0.1);
+  return { line, km: Math.round(r.distance / 1000), min: Math.round(r.duration / 60) };
+}
+
+// Linie der Strecke: berechnete Straßenroute, sonst Luftlinie zwischen den Stopps
+function routeLine(rt) {
+  if (!rt || (rt.stops || []).length < 2) return null;
+  if (rt.line?.length > 1) return rt.line;
+  return rt.stops.map(placeOf).filter(p => p?.lat != null).map(p => [p.lat, p.lng]);
+}
+
+// Orte im Gebiet = Umkreis um den Wohnort ∪ Korridor entlang der Strecke (null = alle Orte)
 function areaPlaces(s) {
-  const home = S.places.find(p => p.key === s.home);
-  if (!home || !s.radius || home.lat == null) return null;
-  return new Set(S.places.filter(p => p.lat != null && kmBetween(home, p) <= s.radius).map(p => p.key));
+  const home = placeOf(s.home);
+  if (home && !s.radius) return null;  // Wohnort mit „ganzer Großraum“
+  const set = new Set();
+  let limited = false;
+  if (home && home.lat != null) {
+    limited = true;
+    S.places.forEach(p => { if (p.lat != null && kmBetween(home, p) <= s.radius) set.add(p.key); });
+  }
+  const line = routeLine(s.route);
+  if (line?.length > 1) {
+    limited = true;
+    const w = s.route.width || 3;
+    S.places.forEach(p => { if (p.lat != null && lineKm(p, line) <= w) set.add(p.key); });
+  }
+  return limited ? set : null;
 }
 
 function applyArea() {
@@ -177,32 +239,70 @@ function areaChanged(before) {
   rerender();
 }
 
+const areaNorm = x => JSON.stringify({ home: x.home || '', radius: x.radius || 0, retailers: x.retailers || [],
+  route: x.route && x.route.stops?.length ? { stops: x.route.stops, width: x.route.width || 3 } : null });
+
 function areaPanel() {
   const ed = canEditArea(), dis = ed ? '' : 'disabled';
   const s = grpSet();
-  const d = S.areaDraft ||= { home: s.home || '', radius: s.radius || 0, retailers: [...(s.retailers || [])] };
+  const d = S.areaDraft ||= { home: s.home || '', radius: s.radius || 0, retailers: [...(s.retailers || [])],
+    route: s.route ? { ...s.route, stops: [...s.route.stops] } : null };
   const inArea = areaPlaces(d);
   const on = k => !d.retailers.length || d.retailers.includes(k);
   const count = S.offers.filter(o => on(o.retailer) && (!inArea || !o.places.length || o.places.some(p => inArea.has(p)))).length;
-  const dirty = JSON.stringify(d) !== JSON.stringify({ home: s.home || '', radius: s.radius || 0, retailers: s.retailers || [] });
+  const dirty = areaNorm(d) !== areaNorm(s) || (d.route?.line && d.route.line !== s.route?.line);
+  const rt = d.route, stops = rt?.stops || [];
+  const small = 'class="muted" style="margin:0 0 8px;font-size:.85rem"';
+  const routeInfo = !rt ? '' : stops.length < 2 ? 'Mindestens Start und Ziel wählen.'
+    : S.routeBusy ? 'Straßenroute wird berechnet …'
+    : rt.line?.length > 1 ? `Straßenroute ${rt.km} km, ca. ${rt.min} Min.`
+    : 'Luftlinie zwischen den Orten (Straßenroute nicht verfügbar).';
   return `<div class="panel" id="areaPanel"><h3>📍 Gebiet & Händler${Cloud.enabled ? ' der Gruppe' : ''}</h3>
-    ${Cloud.enabled ? `<p class="muted" style="margin:0 0 6px;font-size:.85rem">${ed ? 'Gilt für alle in der Gruppe.' : 'Legt der Admin der Gruppe fest.'}</p>` : ''}
-    <label class="line">Wohnort <select data-area="home" ${dis}><option value="">– ohne Umkreis –</option>
+    ${Cloud.enabled ? `<p ${small}>${ed ? 'Gilt für alle in der Gruppe.' : 'Legt der Admin der Gruppe fest.'}</p>` : ''}
+    <h4 class="area-h">🏠 Wohnort & Umkreis</h4>
+    <label class="line">Wohnort <select data-area="home" ${dis}><option value="">– ohne –</option>
       ${S.places.map(p => `<option value="${p.key}" ${d.home === p.key ? 'selected' : ''}>${esc(p.name)} (${p.zip})</option>`).join('')}</select></label>
     ${ed ? '<button class="btn small" data-act="areaGeo">📍 Meinen Standort verwenden</button>' : ''}
     <label class="line">Umkreis <select data-area="radius" ${dis || (d.home ? '' : 'disabled')}>
       ${RADII.map(r => `<option value="${r}" ${d.radius === r ? 'selected' : ''}>${r ? r + ' km' : 'ganzer Großraum'}</option>`).join('')}</select></label>
-    <p class="muted" style="margin:0 0 8px;font-size:.85rem">${inArea
-      ? `${inArea.size} von ${S.places.length} Orten: ${[...inArea].map(k => esc(S.placeName[k] || k)).join(', ')}`
-      : 'Alle Orte des Großraums (49170 Hagen a.T.W. – 33449 Langenberg)'}</p>
+    <h4 class="area-h">🚗 Strecke <span class="muted" style="font-weight:400">(z.B. Arbeitsweg, zusätzlich zum Umkreis)</span></h4>
+    <label class="line switch"><input type="checkbox" data-area-route ${rt ? 'checked' : ''} ${dis}> Märkte entlang einer Strecke</label>
+    ${rt ? `<div class="route-stops">${stops.map((k, i) => `<span class="route-stop">${i === 0 ? '<small>Start</small> ' : i === stops.length - 1 && i ? '<small>Ziel</small> ' : ''}${esc(S.placeName[k] || k)}${ed ? ` <button class="route-x" data-act="routeDel" data-i="${i}" title="Entfernen">✕</button>` : ''}</span>`).join('<span class="route-arrow">→</span>')}</div>
+      ${ed ? `<label class="line"><select data-area-add><option value="">+ Ort ${stops.length ? 'anhängen' : 'als Start'} …</option>
+        ${S.places.map(p => `<option value="${p.key}">${esc(p.name)}</option>`).join('')}</select></label>` : ''}
+      <label class="line">Korridor <select data-area-width ${dis}>${ROUTE_WIDTHS.map(w => `<option value="${w}" ${(rt.width || 3) === w ? 'selected' : ''}>± ${w} km</option>`).join('')}</select></label>
+      <p ${small}>${routeInfo}</p>` : ''}
+    <p ${small}>${inArea
+      ? `Im Gebiet: ${inArea.size} von ${S.places.length} Orten – ${[...inArea].map(k => esc(S.placeName[k] || k)).join(', ')}`
+      : 'Im Gebiet: alle Orte des Großraums (Hagen a.T.W. – Langenberg)'}</p>
+    <h4 class="area-h">🛒 Händler</h4>
     <div class="area-rets">${Object.entries(S.retailers).map(([k, r]) =>
       `<label class="switch"><input type="checkbox" data-area-ret="${k}" ${on(k) ? 'checked' : ''} ${dis}> ${esc(r.name)}</label>`).join('')}</div>
     <p class="muted" style="margin:8px 0;font-size:.85rem">Damit ${count} von ${S.offers.length} Angeboten. Die Händler-Chips oben filtern zusätzlich innerhalb dieser Auswahl.</p>
-    ${ed ? `<button class="btn small primary" data-act="areaSave" ${dirty ? '' : 'disabled'}>Speichern</button>` : ''}
+    ${ed ? `<button class="btn small primary" data-act="areaSave" ${dirty && !S.routeBusy ? '' : 'disabled'}>Speichern</button>` : ''}
   </div>`;
 }
 
 const areaRefresh = () => { const el = $('#areaPanel'); if (el) el.outerHTML = areaPanel(); };
+
+// Stopps geändert: Straßenroute neu berechnen (bis dahin Luftlinie)
+async function routeUpdate() {
+  const rt = S.areaDraft?.route;
+  if (!rt) return;
+  Object.assign(rt, { line: null, km: null, min: null });
+  const stops = [...rt.stops];
+  if (stops.length < 2) { areaRefresh(); return; }
+  S.routeBusy = true;
+  areaRefresh();
+  try {
+    const r = await routeCompute(stops);
+    if (S.areaDraft?.route && JSON.stringify(S.areaDraft.route.stops) === JSON.stringify(stops)) Object.assign(S.areaDraft.route, r);
+  } catch (err) {
+    toast(`Straßenroute nicht verfügbar (${err.message}) – es wird die Luftlinie verwendet`);
+  }
+  S.routeBusy = false;
+  areaRefresh();
+}
 
 function passes(o) {
   const f = S.f;
@@ -1521,6 +1621,20 @@ document.addEventListener('change', e => {
     areaRefresh();
     return;
   }
+  if ('areaRoute' in el.dataset && S.areaDraft) {
+    S.areaDraft.route = el.checked ? { stops: S.areaDraft.home ? [S.areaDraft.home] : [], width: 3 } : null;
+    areaRefresh();
+    return;
+  }
+  if ('areaAdd' in el.dataset && S.areaDraft?.route) {
+    if (el.value) { S.areaDraft.route.stops.push(el.value); routeUpdate(); }
+    return;
+  }
+  if ('areaWidth' in el.dataset && S.areaDraft?.route) {
+    S.areaDraft.route.width = Number(el.value);
+    areaRefresh();
+    return;
+  }
   if (el.dataset.areaRet && S.areaDraft) {
     const all = Object.keys(S.retailers);
     const cur = S.areaDraft.retailers.length ? S.areaDraft.retailers : all;
@@ -1817,7 +1931,9 @@ Object.assign(onClick, {
     const d = S.areaDraft;
     if (!d) return;
     const all = Object.keys(S.retailers);
-    const s = { home: d.home, radius: d.home ? d.radius : 0, retailers: d.retailers.length >= all.length ? [] : d.retailers };
+    const rt = d.route?.stops?.length >= 2 ? d.route : null;
+    const s = { home: d.home, radius: d.home ? d.radius : 0, retailers: d.retailers.length >= all.length ? [] : d.retailers,
+      route: rt && { stops: rt.stops, width: rt.width || 3, line: rt.line || null, km: rt.km || null, min: rt.min || null } };
     try {
       if (Cloud.enabled) await Cloud.adminSettings(s); else save('grpSet', s);
     } catch (err) { toast(`Fehler: ${err.message}`); return; }
@@ -1827,6 +1943,10 @@ Object.assign(onClick, {
     updateBadges();
     areaRefresh();
     toast('Gebiet & Händler gespeichert');
+  },
+  routeDel: el => {
+    S.areaDraft?.route?.stops.splice(Number(el.dataset.i), 1);
+    routeUpdate();
   },
   loginMode: el => showLogin('', el.dataset.mode),
   loginDone: () => afterLogin(),
