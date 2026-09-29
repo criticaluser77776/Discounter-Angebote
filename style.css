@@ -522,3 +522,17 @@ body.no-top #view { padding-top: env(safe-area-inset-top); }
 .more-head { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; }
 .more-back { color: var(--accent); text-decoration: none; font-weight: 600; font-size: .92rem; padding: 4px 0; }
 .more-sub #areaPanel > h3 { display: none; }
+/* Einführung beim ersten Start */
+body.wizard .tabs { display: none; }
+body.wizard #view { padding-bottom: 24px; }
+.wiz { max-width: 560px; margin: 8px auto 0; }
+.wiz h2 { margin: 6px 0 10px; }
+.wiz-dots { display: flex; gap: 6px; justify-content: center; margin: 4px 0 10px; }
+.wiz-dots span { width: 8px; height: 8px; border-radius: 50%; background: var(--line); }
+.wiz-dots span.on { background: var(--accent); width: 22px; border-radius: 4px; }
+.wiz-nav { display: flex; justify-content: space-between; gap: 10px; margin: 18px 0 8px; }
+.wiz #areaPanel > h3, .wiz [data-act="areaSave"] { display: none; }
+.intro { list-style: none; margin: 0 0 12px; padding: 0; }
+.intro li { display: flex; gap: 12px; padding: 9px 0; border-top: 1px solid var(--line); }
+.intro li:first-child { border-top: 0; }
+.intro-i { font-size: 1.4rem; width: 1.6em; text-align: center; flex-shrink: 0; }

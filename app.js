@@ -106,22 +106,23 @@ function lev(a, b, max) {
   return prev[b.length];
 }
 
-// Treffer eines Suchworts: kurze Wörter nur am Wortanfang, lange auch in Komposita; sonst tippfehlertolerant
-function hit(t, s, words) {
+// Treffer eines Suchworts: kurze Wörter nur am Wortanfang, lange auch in Komposita; tippfehlertolerant nur mit fuzzy
+// (Suche: erst ohne, damit „cola“ nicht „Collagen“/„Colgate“ findet)
+function hit(t, s, words, fuzzy = true) {
   if (t.length < 5 ? s.includes(' ' + t) : s.includes(t)) return true;
-  if (t.length < 4) return false;
+  if (!fuzzy || t.length < 4) return false;
   const tol = t.length >= 8 ? 2 : 1;
   return words.some(w => w.length >= t.length - tol &&
     (lev(t, w.slice(0, t.length), tol) <= tol || lev(t, w, tol) <= tol));
 }
 
 // null = kein Treffer; strong = alle Suchwörter in Name/Marke/Gruppe (nicht nur in der Beschreibung)
-function matchQuery(o, qt) {
+function matchQuery(o, qt, fuzzy = false) {
   if (!qt.length) return null;
   let strong = true;
   for (const t of qt) {
-    if (hit(t, o._ts, o._tw) || o._gs.includes(' ' + t)) continue;
-    if (hit(t, o._ds, o._dw)) { strong = false; continue; }
+    if (hit(t, o._ts, o._tw, fuzzy) || o._gs.includes(' ' + t)) continue;
+    if (hit(t, o._ds, o._dw, fuzzy)) { strong = false; continue; }
     return null;
   }
   return { strong };
@@ -249,7 +250,9 @@ function areaPanel() {
     route: s.route ? { ...s.route, stops: [...s.route.stops] } : null };
   const inArea = areaPlaces(d);
   const on = k => !d.retailers.length || d.retailers.includes(k);
-  const count = S.offers.filter(o => on(o.retailer) && (!inArea || !o.places.length || o.places.some(p => inArea.has(p)))).length;
+  const inSel = S.offers.filter(o => on(o.retailer) && (!inArea || !o.places.length || o.places.some(p => inArea.has(p))));
+  const count = inSel.length;
+  const mine = inSel.filter(o => passesPersonal(o)).length;
   const dirty = areaNorm(d) !== areaNorm(s) || (d.route?.line && d.route.line !== s.route?.line);
   const rt = d.route, stops = rt?.stops || [];
   const small = 'class="muted" style="margin:0 0 8px;font-size:.85rem"';
@@ -278,7 +281,7 @@ function areaPanel() {
     <h4 class="area-h">🛒 Händler</h4>
     <div class="area-rets">${Object.entries(S.retailers).map(([k, r]) =>
       `<label class="switch"><input type="checkbox" data-area-ret="${k}" ${on(k) ? 'checked' : ''} ${dis}> ${esc(r.name)}</label>`).join('')}</div>
-    <p class="muted" style="margin:8px 0;font-size:.85rem">Damit ${count} von ${S.offers.length} Angeboten. Die Händler-Chips oben filtern zusätzlich innerhalb dieser Auswahl.</p>
+    <p class="muted" style="margin:8px 0;font-size:.85rem">Im Gebiet ${count} von ${S.offers.length} Angeboten${mine !== count ? `, mit deinen Filtern (Mehr → Filter, Händler-Chips) ${mine}` : ''}.</p>
     ${ed ? `<button class="btn small primary" data-act="areaSave" ${dirty && !S.routeBusy ? '' : 'disabled'}>Speichern</button>` : ''}
   </div>`;
 }
@@ -305,10 +308,14 @@ async function routeUpdate() {
 }
 
 function passes(o) {
-  const f = S.f;
-  if (f.only.length && !f.only.includes(o.retailer)) return false;
   if (S.grpRet && !S.grpRet.includes(o.retailer)) return false;                              // Händler der Gruppe
   if (S.area && o.places.length && !o.places.some(p => S.area.has(p))) return false;        // Umkreis der Gruppe
+  return passesPersonal(o);
+}
+// persönliche Filter (Händler-Chips, Mehr → Filter)
+function passesPersonal(o) {
+  const f = S.f;
+  if (f.only.length && !f.only.includes(o.retailer)) return false;
   if (f.hideApp && o.app_price && !o.regular_price) return false;
   if (f.hideOnline && o.online_only) return false;
   if (f.onlyCurrent && o.upcoming) return false;
@@ -708,10 +715,18 @@ function renderAll() {
 
 function renderSearch() {
   const qt = qTokens(S.q);
-  const res = [];
-  for (const o of visible()) {
+  const vis = visible();
+  let res = [], fuzzy = false;
+  for (const o of vis) {
     const m = matchQuery(o, qt);
     if (m) res.push([o, m.strong]);
+  }
+  if (!res.length) {  // keine genauen Treffer: ähnliche Schreibweisen (Tippfehler)
+    fuzzy = true;
+    for (const o of vis) {
+      const m = matchQuery(o, qt, true);
+      if (m) res.push([o, m.strong]);
+    }
   }
   const strong = res.filter(r => r[1]).map(r => r[0]);
   const weakN = res.length - strong.length;
@@ -742,6 +757,7 @@ function renderSearch() {
       brands.map(b => `<button class="chip ${S.qBrands.has(b.key) ? 'on' : ''}" data-act="qBrand" data-b="${esc(b.key)}">${esc(b.name)} <i>${b.n}</i></button>`).join('') +
       '</div>';
   }
+  if (fuzzy && res.length) h += '<p class="sub">Keine genauen Treffer – ähnliche Schreibweisen:</p>';
   if (weakN && strong.length && !S.showWeak) {
     h += `<div class="chips"><button class="btn small" data-act="showWeak">+ ${weakN} Treffer nur in der Beschreibung</button></div>`;
   }
@@ -983,7 +999,7 @@ function moreSummary(id) {
   if (id === 'filter') { const n = FILTER_OPTS.filter(([k]) => f[k]).length; return n ? `${n} aktiv` : 'keine'; }
   if (id === 'darstellung') return `${(THEMES.find(x => x[0] === f.theme) || THEMES[0])[1]} · Start: ${(START_TABS.find(x => x[0] === (f.startTab || '')) || START_TABS[0])[1]}`;
   if (id === 'daten') return `${S.offers.length} Angebote · Stand ${S.generated ? new Date(S.generated).toLocaleString('de-DE', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '–'}`;
-  if (id === 'info') return window.APP_VERSION ? `Version ${window.APP_VERSION.number}` : 'Installieren, Version';
+  if (id === 'info') return `Kurzanleitung · ${window.APP_VERSION ? 'Version ' + window.APP_VERSION.number : 'Installieren'}`;
   return '';
 }
 
@@ -1015,7 +1031,9 @@ function morePanel(id) {
       <div id="status"><p class="muted">Status wird geladen …</p></div>
     </div>`;
   }
-  if (id === 'info') return `<div class="panel"><h3>Version</h3>${appVersionLine()}</div>
+  if (id === 'info') return `<div class="panel"><h3>Kurzanleitung</h3>${introHtml()}
+      <button class="btn small" data-act="wizShow">Einführung noch einmal ansehen</button></div>
+    <div class="panel"><h3>Version</h3>${appVersionLine()}</div>
     <div class="panel"><h3>Als App installieren</h3>
       <p class="muted" style="margin:0;font-size:.88rem">Android/Chrome: Menü ⋮ → „App installieren“.
       iPhone/Safari: Teilen → „Zum Home-Bildschirm“.</p>
@@ -1269,10 +1287,12 @@ function render() {
   const tab = ['favs', 'add'].includes(r[0]) ? 'favs' : ['list', 'more', 'all'].includes(r[0]) ? r[0] : 'browse';
   document.querySelectorAll('.tabs a').forEach(a => a.classList.toggle('active', a.dataset.tab === tab));
   $('#back').hidden = !(S.q || r[0] === 'c' || r[0] === 'add');
-  const noTop = tab === 'list' || tab === 'more';  // Suche und Händler-Filter spielen auf Zettel und Einstellungen keine Rolle
+  const noTop = tab === 'list' || tab === 'more' || !!S.wizard;  // Suche und Händler-Filter spielen auf Zettel und Einstellungen keine Rolle
   $('header.top').hidden = noTop;
   document.body.classList.toggle('no-top', noTop);
+  document.body.classList.toggle('wizard', !!S.wizard);
   if (!S.loaded) return;
+  if (S.wizard) { renderWizard(); syncDepth(); return; }
   if (tab === 'browse') {
     if (S.q) renderSearch();
     else if (r[0] === 'c' && r[1]) renderCategory(r[1], r[2]);
@@ -1283,6 +1303,7 @@ function render() {
   else if (tab === 'all') renderAll();
   else renderMore(r[1]);
   updateBadges();
+  syncDepth();
 }
 
 // Position in „Kategorien“ und „Alle“ merken (nur im Speicher, also bis zum Neustart der App):
@@ -1293,6 +1314,66 @@ const tabOf = hash => {
 };
 const tabMem = {};
 let lastHash = location.hash || '#/', restoring = null;
+
+// Seitenwechsel ersetzen den aktuellen Verlaufseintrag (kein Zurückblättern durch frühere Tabs). Der Verlauf besteht
+// nur aus einem Basis-Eintrag und dem App-Eintrag darüber (plus ggf. Detailfenster); Zurück landet auf dem Basis-
+// Eintrag und die App geht von dort eine Ebene höher – auf der obersten Ebene eines Tabs wird sie beendet.
+function nav(hash) {
+  if ((location.hash || '#/') === hash) { onRoute(); return; }
+  history.replaceState(history.state, '', hash);
+  onRoute();
+}
+
+function parentOf(hash) {
+  const r = hash.replace(/^#\/?/, '').split('/').filter(Boolean).map(decodeURIComponent);
+  if (r[0] === 'c') return r.length > 2 ? `#/c/${enc(r[1])}` : '#/';
+  if (r[0] === 'add') return r.length > 1 ? '#/' + ['add', ...r.slice(1, -1)].map(enc).join('/') : '#/favs';
+  if (r[0] === 'more' && r[1]) return '#/more';
+  return null;
+}
+
+// eine Ebene höher; false = schon oben
+function goUp() {
+  if (S.wizard) { if (S.wizard.step > 0) { S.wizard.step--; render(); } return true; }
+  if (S.q) { clearSearch(); return true; }
+  const up = parentOf(location.hash || '#/');
+  if (up == null) return false;
+  nav(up);
+  return true;
+}
+
+let popping = false, silentBack = null;
+// Tiefe des Verlaufs an die Seite anpassen: oberste Ebene = nur der Basis-Eintrag (Zurück beendet die App),
+// darunter ein zusätzlicher Eintrag, den Zurück abfängt
+function syncDepth() {
+  if (S.sheetOpen || silentBack) return;
+  const deep = !!(S.q || S.wizard?.step || parentOf(location.hash || '#/'));
+  if (deep && history.state?.base) history.pushState({ app: true }, '', location.href);
+  else if (!deep && history.state?.app) { silentBack = location.href; popping = true; history.back(); }
+}
+
+function initHistory() {
+  history.replaceState({ base: true }, '', location.href);
+  window.addEventListener('popstate', e => {
+    if (silentBack) {  // von syncDepth ausgelöst: nur auf den Basis-Eintrag zurück, Seite bleibt
+      history.replaceState({ base: true }, '', silentBack);
+      silentBack = null;
+      setTimeout(() => { popping = false; }, 0);
+      return;
+    }
+    if (S.sheetOpen) {  // Detailfenster schließen (hatte einen eigenen Eintrag)
+      hideSheet();
+      if (S.afterSheet) { const h = S.afterSheet; S.afterSheet = null; nav(h); }
+      return;
+    }
+    if (!e.state?.base) return;
+    // Zurück von einer tieferen Ebene: eine Ebene hoch
+    popping = true;
+    history.replaceState({ base: true }, '', lastHash);
+    setTimeout(() => { popping = false; }, 0);
+    if (!goUp()) render();
+  });
+}
 
 function onRoute() {
   const old = tabOf(lastHash);
@@ -1327,7 +1408,7 @@ document.querySelector('.tabs').addEventListener('click', e => {
   if (!m || tabOf(location.hash || '#/') === t) return;
   e.preventDefault();
   restoring = m;
-  if ((location.hash || '#/') === m.hash) onRoute(); else location.hash = m.hash;
+  nav(m.hash);
 });
 
 function renderChips() {
@@ -1340,10 +1421,12 @@ function renderChips() {
 
 function updateBadges() {
   if (!S.loaded) return;
-  const fresh = freshCount(visible());
+  // Favoriten mit aktuellem Angebot (immer sichtbar, nicht nur neue)
+  const now = visible().filter(o => !o.upcoming);
+  const onOffer = S.favs.filter(f => now.some(o => favMatch(f, o))).length;
   const fb = $('#favBadge');
-  fb.hidden = !fresh;
-  fb.textContent = fresh;
+  fb.hidden = !onOffer;
+  fb.textContent = onOffer;
   const open = Li.openCount();
   const lb = $('#listBadge');
   lb.hidden = !open;
@@ -1540,14 +1623,14 @@ const onClick = {
     saveFavs();
     toast(`★ „${d.group}“ ${ex ? 'aktualisiert' : 'gemerkt'}`);
     S.draft = null;
-    location.hash = '#/add/' + enc(d.cat);
+    nav('#/add/' + enc(d.cat));
   },
   draftDel: () => {
     const d = S.draft;
     const ex = findFav({ type: 'group', category: d.cat, group: d.group });
     if (ex) { S.favs = S.favs.filter(x => x !== ex); saveFavs(); toast(`„${d.group}“ entfernt`); }
     S.draft = null;
-    location.hash = '#/add/' + enc(d.cat);
+    nav('#/add/' + enc(d.cat));
   },
   favBrandGroup: el => {
     const o = S.byId.get(el.dataset.id);
@@ -1566,9 +1649,8 @@ const onClick = {
   },
   goto: (el, e) => {
     e.preventDefault();
-    hideSheet();
-    history.replaceState(null, '', el.getAttribute('href'));
-    onRoute();
+    if (S.sheetOpen) { S.afterSheet = el.getAttribute('href'); closeSheet(); }  // erst Fenster schließen, dann wechseln
+    else nav(el.getAttribute('href'));
   },
   closeSheet: () => closeSheet(),
   logout: async () => {
@@ -1646,7 +1728,12 @@ let swAddUntil = 0;
 document.addEventListener('click', e => {
   if (Date.now() < swAddUntil && e.target.closest('#view')) { e.preventDefault(); e.stopPropagation(); return; }
   const el = e.target.closest('[data-act]');
-  if (!el) return;
+  if (!el) {
+    // interne Links ohne neuen Verlaufseintrag
+    const a = e.target.closest('a[href^="#"]');
+    if (a && !e.defaultPrevented) { e.preventDefault(); nav(a.getAttribute('href')); }
+    return;
+  }
   const fn = onClick[el.dataset.act];
   if (fn) fn(el, e);
 });
@@ -1749,23 +1836,17 @@ qInput.addEventListener('input', () => {
     S.limit = 60;
     $('#clearQ').hidden = !qInput.value;
     const r = route();
-    if (S.q && r[0] && r[0] !== 'c') { location.hash = '#/'; return; }
+    if (S.q && r[0] && r[0] !== 'c') { nav('#/'); return; }
     render();
   }, 160);
 });
 qInput.addEventListener('keydown', e => { if (e.key === 'Enter') qInput.blur(); });
 $('#clearQ').addEventListener('click', () => { clearSearch(); qInput.focus(); });
 
-$('#back').addEventListener('click', () => {
-  if (S.q) { clearSearch(); return; }
-  const r = route();
-  if (r[0] === 'c') location.hash = r.length > 2 ? `#/c/${enc(r[1])}` : '#/';
-  else if (r[0] === 'add') location.hash = r.length > 1 ? '#/' + ['add', ...r.slice(1, -1)].map(enc).join('/') : '#/favs';
-  else location.hash = '#/';
-});
+$('#back').addEventListener('click', () => { if (!goUp()) nav('#/'); });
 
-window.addEventListener('hashchange', onRoute);
-window.addEventListener('popstate', () => { if (S.sheetOpen) hideSheet(); });
+// nur echte Adressänderungen (z.B. von Hand); eigene Wechsel sind schon gezeichnet
+window.addEventListener('hashchange', () => { if (!popping && (location.hash || '#/') !== lastHash) onRoute(); });
 document.addEventListener('keydown', e => { if (e.key === 'Escape' && S.sheetOpen) closeSheet(); });
 
 /* ---------- Favoriten verschieben (Drag & Drop am Griff ⠿) ---------- */
@@ -2029,11 +2110,74 @@ function showLogin(msg, mode = 'join') {
 // nach Anmeldung/Anlegen: Zettel einer anderen Gruppe verwerfen, Favoriten senden, Daten laden
 async function afterLogin() {
   if (Cloud.switchedGroup()) liResetGroup();
+  if (!load('onboarded', false)) S.wizard = wizardStart();
   view.innerHTML = '<p class="loading">Lade Angebote …</p>';
   liFavsPush(S.favs);
   await loadData();
   Sync.run();
 }
+
+/* ---------- Einführung (erster Start; später unter Mehr → Über die App) ---------- */
+
+function wizardStart() {
+  const s = grpSet();
+  const steps = ['welcome'];
+  if (canEditArea() && !s.home && !s.route && !(s.retailers || []).length) steps.push('area');
+  steps.push('start', 'intro');
+  return { step: 0, steps };
+}
+
+const INTRO = [
+  ['🗂️', 'Kategorien & Alle', 'Angebote stöbern. Oben suchen und über die farbigen Chips Händler auswählen.'],
+  ['👉', 'Nach rechts wischen', 'auf einem Angebot oder Favoriten – schon steht es auf dem Einkaufszettel.'],
+  ['⭐', 'Favoriten', 'Produkte, Produktgruppen oder Marken merken. Die Zahl am Stern zeigt, wie viele gerade im Angebot sind.'],
+  ['📝', 'Einkaufszettel', 'Eintrag nach rechts wischen = abhaken, nach links = löschen, antippen = Menge ändern, ⚙️ = Details. Vorschläge beim Tippen kennen eure Favoriten und den Verlauf.'],
+  ['👥', 'Gruppe', 'Der Zettel ist für alle in der Gruppe derselbe – Änderungen erscheinen sofort bei den anderen.'],
+  ['⚙️', 'Mehr', 'Gebiet & Händler, Filter, Darstellung und Start-Tab.'],
+];
+const introHtml = () => `<ul class="intro">${INTRO.filter(([, t]) => Cloud.enabled || t !== 'Gruppe')
+  .map(([i, t, d]) => `<li><span class="intro-i">${i}</span><span><b>${t}</b><br><span class="muted">${d}</span></span></li>`).join('')}</ul>`;
+
+function renderWizard() {
+  const w = S.wizard, id = w.steps[w.step], last = w.step === w.steps.length - 1;
+  const body = {
+    welcome: () => `<h2>👋 Willkommen${Cloud.group() ? ` in der Gruppe „${esc(Cloud.group())}“` : ''}!</h2>
+      <p>Die App vergleicht die Wochenangebote der Discounter und Supermärkte in eurer Gegend nach Grundpreis –
+        und führt euren gemeinsamen Einkaufszettel.</p>
+      <p class="muted">In ${w.steps.length - 1} kurzen Schritten ist sie eingerichtet. Alles lässt sich später unter „Mehr“ ändern.</p>`,
+    area: () => `<h2>📍 Gebiet & Händler</h2>
+      <p class="muted">Wo kauft ihr ein? Wohnort mit Umkreis, optional eine Strecke (z.B. Arbeitsweg) und die Händler.</p>${areaPanel()}`,
+    start: () => `<h2>🏁 Start-Tab</h2><p class="muted">Was soll beim Öffnen der App erscheinen?</p>
+      <div class="panel">${START_TABS.map(([k, l]) => `<label class="line switch"><input type="radio" name="wizStart" data-set="startTab" value="${k}" ${(S.f.startTab || '') === k ? 'checked' : ''}> ${l}</label>`).join('')}</div>`,
+    intro: () => `<h2>💡 So funktioniert's</h2>${introHtml()}`,
+  }[id]();
+  view.innerHTML = `<div class="wiz">
+    <div class="wiz-dots">${w.steps.map((_, i) => `<span class="${i === w.step ? 'on' : ''}"></span>`).join('')}</div>
+    ${body}
+    <div class="wiz-nav">
+      ${w.step ? '<button class="btn" data-act="wizBack">Zurück</button>' : '<button class="btn" data-act="wizDone">Überspringen</button>'}
+      <button class="btn primary" data-act="wizNext">${last ? 'Los geht\'s' : 'Weiter'}</button>
+    </div></div>`;
+}
+
+Object.assign(onClick, {
+  wizBack: () => { S.wizard.step--; render(); },
+  wizNext: async () => {
+    const w = S.wizard;
+    if (w.steps[w.step] === 'area' && S.areaDraft && !$('[data-act="areaSave"]')?.disabled) await onClick.areaSave();
+    if (w.step < w.steps.length - 1) { w.step++; S.areaDraft = null; render(); window.scrollTo(0, 0); }
+    else onClick.wizDone();
+  },
+  wizDone: () => {
+    save('onboarded', true);
+    S.wizard = null;
+    S.areaDraft = null;
+    const st = S.f.startTab === 'last' ? '' : S.f.startTab || '';
+    nav('#/' + st);
+  },
+  wizShow: () => { S.wizard = wizardStart(); render(); window.scrollTo(0, 0); },
+});
+
 
 document.addEventListener('submit', async e => {
   if (e.target.id === 'createForm') {
@@ -2067,9 +2211,19 @@ document.addEventListener('submit', async e => {
 // Start; aufgerufen am Ende von list.js, wenn alle Teile geladen sind
 function boot() {
   applyTheme();
-  if (!location.hash || location.hash === '#/') {  // App-Start ohne bestimmte Seite: eingestellten Start-Tab öffnen
+  // App-Start ohne bestimmte Seite: eingestellten Start-Tab öffnen – nicht beim Aktualisieren (Wischen nach unten),
+  // dann bleibt die aktuelle Seite (sessionStorage überlebt das Neuladen, nicht das Beenden der App)
+  let reload = false;
+  try { reload = !!sessionStorage.getItem('ap.session'); sessionStorage.setItem('ap.session', '1'); } catch { /* egal */ }
+  if (!reload && (!location.hash || location.hash === '#/')) {
     const st = S.f.startTab === 'last' ? load('lastTab', '') : S.f.startTab || '';
     if (st) { history.replaceState(null, '', '#/' + st); lastHash = location.hash; }
+  }
+  initHistory();
+  // Einführung beim ersten Start; bisherige Nutzer (schon angemeldet bzw. mit Zettel) sehen sie nicht automatisch
+  if (!load('onboarded', false)) {
+    if ((Cloud.enabled && Cloud.loggedIn()) || R.item.size || R.hist.size || S.favs.length) save('onboarded', true);
+    else if (!Cloud.enabled) S.wizard = wizardStart();
   }
   render();
   if (Cloud.enabled && !Cloud.loggedIn()) showLogin();
