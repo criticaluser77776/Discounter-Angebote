@@ -719,7 +719,7 @@ function renderCategory(cat, group) {
   let h = `<div class="head"><h2>${ICONS[cat] || ''} ${esc(cat)}</h2>
     ${group ? '' : `<a class="btn small" href="#/add/${enc(cat)}">☆ Favoriten wählen</a>`}</div>`;
   h += `<div class="chips wrap pick"><a class="chip ${group ? '' : 'on'}" href="#/c/${enc(cat)}">Alle <i>${all.length}</i></a>` +
-    groups.map(g => `<a class="chip ${g === group ? 'on' : ''}" href="#/c/${enc(cat)}/${enc(g)}">${esc(g)} <i>${gc[g]}</i></a>`).join('') + '</div>';
+    groups.map(g => `<a class="chip ${g === group ? 'on' : ''}" href="#/c/${enc(cat)}${g === group ? '' : '/' + enc(g)}">${esc(g)} <i>${gc[g]}</i></a>`).join('') + '</div>';
   if (group) {
     const brands = brandCounts(list);
     // gewählte Marken ohne aktuelles Angebot trotzdem zeigen (zum Abwählen), z.B. aus der Favoriten-Auswahl
@@ -1609,7 +1609,7 @@ const onClick = {
     const label = `${g === OTHER ? cat : g}${brands.length ? ' (' + brands.map(k => names[k]).join(', ') + ')' : ''}`;
     Li.addWish({ type: 'group', category: cat, group: g, brands, brandOnly: S.brandOnly }, label);
   },
-  facet: el => { S.qFacet = el.dataset.k || null; S.qBrands.clear(); S.limit = 60; rerender(); },
+  facet: el => { const k = el.dataset.k || null; S.qFacet = k === S.qFacet ? null : k; S.qBrands.clear(); S.limit = 60; rerender(); },
   qBrand: el => {
     const k = el.dataset.b;
     if (!k) S.qBrands.clear();
