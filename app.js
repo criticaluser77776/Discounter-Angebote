@@ -1790,7 +1790,8 @@ const onClick = {
   },
 };
 
-// Nach rechts wischen: Angebotskarte bzw. Favorit landet auf dem Einkaufszettel (Favorit mit seinem eigenen Namen)
+// Nach rechts wischen: Angebotskarte bzw. Favorit landet auf dem Einkaufszettel (Favorit mit seinem eigenen Namen);
+// Favorit nach links wischen: nach Rückfrage entfernen
 let swAddUntil = 0;
 (() => {
   let sw = null;
@@ -1805,21 +1806,23 @@ let swAddUntil = 0;
     if (!sw || e.pointerId !== sw.id) return;
     const dx = e.clientX - sw.x, dy = e.clientY - sw.y;
     if (!sw.active) {
-      if (dx > 12 && dx > Math.abs(dy) * 1.5) {
+      const left = dx < -12 && sw.el.classList.contains('fav');  // nach links nur bei Favoriten
+      if ((dx > 12 || left) && Math.abs(dx) > Math.abs(dy) * 1.5) {
         sw.active = true;
+        sw.dir = dx > 0 ? 1 : -1;
         try { sw.el.setPointerCapture(e.pointerId); } catch { /* egal */ }
         const r = sw.el.getBoundingClientRect();
         sw.hint = document.createElement('div');
-        sw.hint.className = 'sw-hint';
-        sw.hint.textContent = '＋ Zettel';
+        sw.hint.className = sw.dir > 0 ? 'sw-hint' : 'sw-hint del';
+        sw.hint.textContent = sw.dir > 0 ? '＋ Zettel' : 'Entfernen 🗑';
         Object.assign(sw.hint.style, { top: r.top + window.scrollY + 'px', left: r.left + window.scrollX + 'px', width: r.width + 'px', height: r.height + 'px' });
         document.body.appendChild(sw.hint);
         sw.el.classList.add('sw-moving');
       } else if (Math.abs(dy) > 12 || dx < -12) { sw = null; return; } else return;
     }
-    sw.dx = Math.max(0, dx);
+    sw.dx = sw.dir > 0 ? Math.max(0, dx) : Math.min(0, dx);
     sw.el.style.transform = `translateX(${sw.dx}px)`;
-    sw.hint.classList.toggle('go', sw.dx > Math.min(110, sw.el.offsetWidth * 0.3));
+    sw.hint.classList.toggle('go', Math.abs(sw.dx) > Math.min(110, sw.el.offsetWidth * 0.3));
   });
   const end = () => {
     if (!sw) return;
@@ -1827,11 +1830,15 @@ let swAddUntil = 0;
     sw = null;
     if (!s.active) return;
     swAddUntil = Date.now() + 400;  // folgenden Klick (Detailansicht öffnen) unterdrücken
-    const go = s.dx > Math.min(110, s.el.offsetWidth * 0.3);
+    const go = Math.abs(s.dx) > Math.min(110, s.el.offsetWidth * 0.3);
     s.el.style.transition = 'transform .15s';
     s.el.style.transform = '';
     setTimeout(() => { s.el.style.transition = ''; s.el.classList.remove('sw-moving'); s.hint.remove(); }, 160);
     if (!go) return;
+    if (s.dir < 0) {  // Favorit entfernen – Rückfrage erst, wenn die Zeile zurückgefedert ist
+      setTimeout(() => onClick.favDel(s.el), 170);
+      return;
+    }
     if (s.el.classList.contains('card')) {
       const o = S.byId.get(s.el.dataset.id);
       if (!o) return;

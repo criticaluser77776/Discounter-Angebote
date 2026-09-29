@@ -554,3 +554,5 @@ body.wizard #view { padding-bottom: 24px; }
 .pbar-few { padding: 0 14px 10px 50px; font-size: .75rem; color: var(--muted); }
 .hist .pbar-few { padding: 2px 0 6px; }
 .pbar { position: relative; }
+.sw-hint.del { justify-content: flex-end; padding: 0 18px 0 0; background: color-mix(in srgb, var(--red) 30%, var(--surface)); }
+.sw-hint.del.go { background: var(--red); color: #fff; }
