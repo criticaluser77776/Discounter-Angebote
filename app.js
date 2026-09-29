@@ -558,6 +558,16 @@ function priceBlock(o, metric) {
     ${np != null ? row('', np, normalUnit(o)) : ''}${row('is-app', o.price, o.unit_price, '📱 ')}</div>`;
 }
 
+// kompakter Preis der Karte: Vergleichswert fett (Grundpreis bzw. Packungspreis), darunter der andere Wert
+function cardPrice(o, metric) {
+  const byPack = metric === 'price' || !o.eu;
+  const main = byPack ? `${fmt(o.ep)} €` : `${fmt(o.eu)} €/${esc(o.unit)}`;
+  const sub = byPack ? (o.eu ? `${fmt(o.eu)} €/${esc(o.unit)}` : '') : `${fmt(o.ep)} €`;
+  const np = o.ea ? normalPrice(o) : null;
+  return `<div class="cprice"><b class="${o.ea ? 'is-app' : ''}">${o.ea ? '📱 ' : ''}${main}</b>
+    <small>${sub}${np != null ? ` · ohne App ${fmt(np)} €` : ''}</small></div>`;
+}
+
 function card(o, opts = {}) {
   const r = S.retailers[o.retailer] || { name: o.retailer, color: '#888' };
   const d = disc(o);
@@ -570,24 +580,25 @@ function card(o, opts = {}) {
   if (o.upcoming) tags.push(`<span class="tag blue">ab ${dshort(o.valid_from)}</span>`);
   else if (o.valid_to) tags.push(`<span class="tag">bis ${dshort(o.valid_to)}</span>`);
   if (o.markets?.length > 1) tags.push(`<span class="tag">${o.markets.length} Märkte</span>`);
+  // Zettel-Status (früher an den Knöpfen ＋/❗ erkennbar; hinzufügen jetzt per Wischen)
+  if (inList(o)) tags.unshift(`<span class="tag zl">${Li.isPrioOffer(o) ? '❗' : '✓'} Zettel</span>`);
+  const name = o.name || o.title;
+  const title = o.brand && !norm(name).includes(norm(o.brand)) ? `${o.brand} ${name}` : name;
   const img = o.image
     ? `<img loading="lazy" referrerpolicy="no-referrer" src="${esc(o.image)}" alt="" onerror="this.replaceWith('${ICONS[o.category] || '📦'}')">`
     : ICONS[o.category] || '📦';
+  // kompakt: Titel (mit Marke) · Händler + Beschreibung · Hinweise; rechts Preis und ☆. Zettel/Wichtig per Wischen
+  const fav = isProductFav(o);
   return `<article class="card" data-act="open" data-id="${esc(o.id)}">
     <div class="thumb">${img}</div>
     <div class="info">
-      <div class="meta"><span class="rt" style="--c:${r.color}">${esc(r.name)}</span>${o.brand ? `<span class="brand">${esc(o.brand)}</span>` : ''}</div>
-      <h3>${esc(o.name || o.title)}</h3>
-      ${o.description ? `<p class="desc">${esc(o.description)}</p>` : ''}
-      <div class="tags">${tags.join('')}</div>
+      <h3>${esc(title)}</h3>
+      <div class="meta"><span class="rt" style="--c:${r.color}">${esc(r.name)}</span>${o.description ? `<span class="brand">${esc(o.description)}</span>` : ''}</div>
+      ${tags.length ? `<div class="tags">${tags.join('')}</div>` : ''}
     </div>
     <div class="side">
-      ${priceBlock(o, opts.metric)}
-      <div class="acts">
-        <button class="ic ${isProductFav(o) ? 'on' : ''}" data-act="star" data-id="${esc(o.id)}" aria-label="Produkt merken">★</button>
-        <button class="ic add ${inList(o) ? 'on' : ''}" data-act="add" data-id="${esc(o.id)}" aria-label="Auf den Einkaufszettel">＋</button>
-        <button class="ic prio ${Li.isPrioOffer(o) ? 'on' : ''}" data-act="prioOffer" data-id="${esc(o.id)}" aria-label="Wichtig auf den Einkaufszettel">❗</button>
-      </div>
+      ${cardPrice(o, opts.metric)}
+      <button class="star-s ${fav ? 'on' : ''}" data-act="star" data-id="${esc(o.id)}" aria-label="Produkt merken">${fav ? '★' : '☆'}</button>
     </div>
   </article>`;
 }
@@ -871,16 +882,11 @@ function renderFavs() {
     h += `<section class="fav" data-fid="${f.id}"><div class="fav-h" data-act="favOpen" data-fid="${f.id}">
       ${own ? '<span class="fav-drag" aria-label="Verschieben" title="Zum Verschieben ziehen">⠿</span>' : ''}
       <span style="font-size:22px">${L.icon}</span>
-      <div class="t"><b>${esc(L.title)}</b><small>${esc(L.sub)}${pack ? ' · Packungspreis' : ''}${f.max ? ` · ${esc(maxLabel(f))}` : ''}</small></div>
-      <div class="fav-r">${m.length ? `<span class="cnt">${m.length}</span>` : '<span class="none">kein Angebot</span>'}
-        ${fresh ? `<span class="new">${fresh} neu</span>` : ''}
-        ${best ? `<span class="fav-best${best.ea ? ' is-app' : ''}">ab ${best.ea ? '📱 ' : ''}${esc(pack ? `${fmt(best.ep)} €` : priceLine(best))}</span>
-          <span class="fav-rt">${esc(rname(best))}</span>` : ''}
-        <span class="fav-acts">
-          <button class="ic add ${wish ? 'on' : ''}" data-act="favWish" data-fid="${f.id}" aria-label="Auf den Einkaufszettel">＋</button>
-          <button class="ic prio ${wish?.prio ? 'on' : ''}" data-act="favWish" data-fid="${f.id}" data-prio="1" aria-label="Wichtig auf den Einkaufszettel">❗</button>
-          <button class="ic ${settings ? 'on' : ''}" data-act="favSettings" data-fid="${f.id}" aria-label="Einstellungen">⚙️</button>
-        </span></div></div>${priceBar(favRange(f, m))}`;
+      <div class="t"><b>${esc(L.title)}${fresh ? ` <span class="new">${fresh} neu</span>` : ''}</b>
+        <small>${esc(L.sub)}${pack ? ' · Packungspreis' : ''}${f.max ? ` · ${esc(maxLabel(f))}` : ''} · ${m.length ? `${m.length} Angebot${m.length === 1 ? '' : 'e'}` : 'kein Angebot'}${wish ? ` · <span class="zl">${wish.prio ? '❗' : '✓'} Zettel</span>` : ''}</small></div>
+      <div class="fav-r">${best ? `<span class="fav-best${best.ea ? ' is-app' : ''}">ab ${best.ea ? '📱 ' : ''}${esc(pack ? `${fmt(best.ep)} €` : priceLine(best))}</span>
+          <span class="fav-rt">${esc(rname(best))}</span>` : ''}</div>
+      <button class="fav-more ${settings ? 'on' : ''}" data-act="favSettings" data-fid="${f.id}" aria-label="Einstellungen">⋮</button></div>${priceBar(favRange(f, m))}`;
     if (settings) {
       // Einstellungen nur auf Wunsch (⚙️), nicht beim Aufklappen
       const unit = f.maxUnit || dominantUnit(m) || 'kg';
@@ -1813,8 +1819,9 @@ let swAddUntil = 0;
         try { sw.el.setPointerCapture(e.pointerId); } catch { /* egal */ }
         const r = sw.el.getBoundingClientRect();
         sw.hint = document.createElement('div');
-        sw.hint.className = sw.dir > 0 ? 'sw-hint' : 'sw-hint del';
-        sw.hint.textContent = sw.dir > 0 ? '＋ Zettel' : 'Entfernen 🗑';
+        sw.hint.className = sw.dir > 0 ? 'sw-hint two' : 'sw-hint del';
+        sw.hint.innerHTML = sw.dir > 0 ? '<div class="z">＋ Auf den Zettel</div><div class="w">❗ Wichtig</div>' : '<div class="d">Entfernen 🗑</div>';
+        sw.rect = r;
         Object.assign(sw.hint.style, { top: r.top + window.scrollY + 'px', left: r.left + window.scrollX + 'px', width: r.width + 'px', height: r.height + 'px' });
         document.body.appendChild(sw.hint);
         sw.el.classList.add('sw-moving');
@@ -1822,7 +1829,11 @@ let swAddUntil = 0;
     }
     sw.dx = sw.dir > 0 ? Math.max(0, dx) : Math.min(0, dx);
     sw.el.style.transform = `translateX(${sw.dx}px)`;
-    sw.hint.classList.toggle('go', Math.abs(sw.dx) > Math.min(110, sw.el.offsetWidth * 0.3));
+    const goNow = Math.abs(sw.dx) > Math.min(110, sw.el.offsetWidth * 0.3);
+    sw.lower = e.clientY > sw.rect.top + sw.rect.height / 2;  // untere Hälfte = wichtig
+    sw.hint.classList.toggle('go', goNow);
+    sw.hint.querySelector('.z')?.classList.toggle('on', goNow && !sw.lower);
+    sw.hint.querySelector('.w')?.classList.toggle('on', goNow && sw.lower);
   });
   const end = () => {
     if (!sw) return;
@@ -1839,16 +1850,19 @@ let swAddUntil = 0;
       setTimeout(() => onClick.favDel(s.el), 170);
       return;
     }
+    const prio = !!s.lower;
     if (s.el.classList.contains('card')) {
       const o = S.byId.get(s.el.dataset.id);
       if (!o) return;
-      if (Li.hasOffer(o)) toast('Schon auf dem Einkaufszettel');
-      else Li.toggleOffer(o);
+      if (prio ? Li.isPrioOffer(o) : Li.hasOffer(o)) toast(prio ? 'Schon als wichtig auf dem Zettel' : 'Schon auf dem Einkaufszettel');
+      else Li.toggleOffer(o, prio);  // bereits auf dem Zettel + wichtig: nur markieren
     } else {
       const f = S.favs.find(x => x.id === s.el.dataset.fid);
       if (!f) return;
-      if (Li.favWish(f)) toast(`„${favLabel(f).title}“ ist schon auf dem Einkaufszettel`);
-      else Li.addWish(f, favLabel(f).title, {});
+      const ex = Li.favWish(f), label = favLabel(f).title;
+      if (ex && (ex.prio || !prio)) toast(`„${label}“ ist schon ${ex.prio && prio ? 'als wichtig ' : ''}auf dem Einkaufszettel`);
+      else if (ex) Li.toggleFavWish(f, label, true);  // vorhanden, jetzt wichtig
+      else Li.addWish(f, label, { prio });
     }
     setTimeout(rerender, 170);
   };
