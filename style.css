@@ -539,3 +539,4 @@ body.wizard #view { padding-bottom: 24px; }
 /* Auswahl-Chips: umbrechen; Trenner vor den Handelsmarken */
 .chip-sep { flex-basis: 100%; font-size: .75rem; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; margin: 4px 0 -2px 4px; }
 .rows-sep { font-size: .75rem; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; padding: 12px 4px 4px; }
+.ic-space { width: 32px; flex-shrink: 0; }

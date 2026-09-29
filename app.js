@@ -382,7 +382,7 @@ function favMatch(f, o) {
   switch (f.type) {
     case 'group':
       if (o.category !== f.category || (f.group && o.group !== f.group)) return false;
-      if (f.brands?.length && !f.brands.includes(o.brand_key)) return false;
+      if (f.brands?.length && !brandHit(f, o)) return false;
       if (f.brandOnly && o.brand_type !== 'marke') return false;
       break;
     case 'brand':
@@ -395,7 +395,7 @@ function favMatch(f, o) {
       if (!matchQuery(o, qTokens(f.q))?.strong) return false;
       // mitgemerkte Filter der Suche: Produktgruppe und Marken
       if (f.category && (o.category !== f.category || o.group !== f.group)) return false;
-      if (f.brands?.length && !f.brands.includes(o.brand_key)) return false;
+      if (f.brands?.length && !brandHit(f, o)) return false;
       break;
     default:
       return false;
@@ -498,7 +498,7 @@ function brandNamesOf(keys, source) {
   const names = {};
   for (const k of keys) {
     const x = source.find(o => o.brand_key === k);
-    names[k] = x ? (x.brand || 'Ohne Marke') : k;
+    names[k] = x ? (x.brand || 'Ohne Marke') : KNOWN_NAME.get(k) || k;
   }
   return names;
 }
@@ -634,6 +634,60 @@ const sortBrands = list => list.sort((a, b) => (BRAND_RANK[a.type] ?? 2) - (BRAN
 // Zwischenüberschrift vor der ersten Handelsmarke (nur wenn es davor Markenprodukte gibt)
 const brandSep = (list, i) => list[i].type === 'eigen' && i > 0 && list[i - 1].type !== 'eigen'
   ? '<span class="chip-sep">Handelsmarken</span>' : '';
+
+/* ---------- Bekannte Marken und Eigenmarken (brands.js) ---------- */
+
+const FOOD_CATS = ['Fleisch & Geflügel', 'Wurst & Aufschnitt', 'Fisch & Meeresfrüchte', 'Milch & Molkerei', 'Käse',
+  'Brot & Backwaren', 'Tiefkühl', 'Vorrat & Konserven', 'Frühstück & Aufstrich', 'Süßes & Snacks', 'Kaffee & Tee', 'Getränke'];
+const bkey = s => norm(s).replace(/[^a-z0-9]/g, '');
+// Namen aller bekannten Marken (Schlüssel -> Anzeigename) und Händler der Eigenmarken
+const KNOWN_NAME = new Map(), KNOWN_RET = new Map();
+// "Kat/Gruppe, Kat, …" – Gruppennamen enthalten selbst Kommas („Mehl, Zucker & Backen“): Teile ohne Kategorie anhängen
+const OWN_CATS = [...FOOD_CATS, 'Bier', 'Wein & Sekt', 'Spirituosen', 'Drogerie & Pflege', 'Baby & Kind', 'Haushalt & Reinigung', 'Tierbedarf'];
+function ownPlaces(s) {
+  const out = [];
+  for (const part of s.split(', ')) {
+    if (!out.length || part === 'Lebensmittel' || part.includes('/') || OWN_CATS.includes(part)) out.push(part);
+    else out[out.length - 1] += ', ' + part;
+  }
+  return out;
+}
+const KNOWN_OWN_AT = (typeof KNOWN_OWN === 'undefined' ? [] : KNOWN_OWN).map(([name, retailer, where]) => {
+  KNOWN_NAME.set(bkey(name), name);
+  KNOWN_RET.set(bkey(name), retailer);
+  return { name, retailer, where: ownPlaces(where) };
+});
+for (const list of Object.values(typeof KNOWN_BRANDS === 'undefined' ? {} : KNOWN_BRANDS))
+  for (const n of list.split(',').map(s => s.trim()).filter(Boolean)) if (!KNOWN_NAME.has(bkey(n))) KNOWN_NAME.set(bkey(n), n);
+
+// bekannte Marken einer Produktgruppe: Markenprodukte und passende Eigenmarken der Händler
+function knownBrands(cat, group) {
+  const out = new Map();
+  for (const n of (KNOWN_BRANDS[`${cat}|${group}`] || '').split(',').map(s => s.trim()).filter(Boolean))
+    out.set(bkey(n), { key: bkey(n), name: n, type: 'marke' });
+  for (const b of KNOWN_OWN_AT) {
+    const fits = b.where.some(w => w === `${cat}/${group}` || w === cat || (w === 'Lebensmittel' && FOOD_CATS.includes(cat)));
+    if (fits && !out.has(bkey(b.name))) out.set(bkey(b.name), { key: bkey(b.name), name: b.name, type: 'eigen', retailer: b.retailer });
+  }
+  return [...out.values()];
+}
+
+// Marke eines Favoriten trifft ein Angebot: gleicher Markenschlüssel oder der Markenname als ganze Wortfolge im Titel
+// (Prospekte führen z.B. Twix oft unter „Mars“)
+const phraseCache = new Map();
+function brandPhrase(name) {
+  if (!phraseCache.has(name)) phraseCache.set(name, spaced(norm(name)).trim());
+  return phraseCache.get(name);
+}
+function brandHit(f, o) {
+  if (f.brands.includes(o.brand_key)) return true;
+  const ts = o._ts + ' ';
+  return f.brands.some(k => {
+    const n = f.brandNames?.[k] || KNOWN_NAME.get(k);
+    const ph = n && brandPhrase(n);
+    return ph && ph.length >= 3 && ts.includes(' ' + ph + ' ');
+  });
+}
 
 // Produktgruppen einer Kategorie A–Z, „Weitere“ zuletzt
 const groupsOf = cat => [...new Set(S.groups[cat] || [])].filter(g => g !== OTHER)
@@ -934,6 +988,10 @@ function pickList(cat, group, live) {
     if (live.has(e.product_key)) b.live++;
     brands.set(e.brand_key, b);
   }
+  // bekannte Marken und Eigenmarken, die noch in keinem Prospekt vorkamen (Treffer später über Marke oder Titel)
+  for (const k of knownBrands(cat, group)) if (!brands.has(k.key)) brands.set(k.key, { ...k, items: [], live: 0, known: true });
+  // gewählte Marken, die weder im Katalog noch in der Liste stehen, nicht verlieren
+  for (const k of d.brands) if (!brands.has(k)) brands.set(k, { key: k, name: KNOWN_NAME.get(k) || k, type: KNOWN_RET.has(k) ? 'eigen' : 'marke', items: [], live: 0, known: true });
   let list = [...brands.values()];
   if (q) {
     list = list.map(b => {
@@ -951,8 +1009,8 @@ function pickList(cat, group, live) {
     let r = sep + `<div class="row ${on ? 'sel' : ''}">
       <button class="check ${on ? 'on' : ''}" data-act="draftBrand" data-b="${esc(b.key)}">✓</button>
       <div class="t" data-act="pickOpen" data-b="${esc(b.key)}"><b>${esc(b.name)}</b>
-        <small>${b.items.length} Produkt${b.items.length > 1 ? 'e' : ''}${b.live ? ` · <span class="live">${b.live} im Angebot</span>` : ''}${b.type === 'eigen' ? ' · Handelsmarke' : ''}</small></div>
-      <button class="ic" data-act="pickOpen" data-b="${esc(b.key)}" aria-label="Produkte zeigen">${open ? '▾' : '›'}</button></div>`;
+        <small>${b.known ? 'noch nicht im Angebot gesehen' : `${b.items.length} Produkt${b.items.length > 1 ? 'e' : ''}`}${b.live ? ` · <span class="live">${b.live} im Angebot</span>` : ''}${b.type === 'eigen' ? ` · Handelsmarke${KNOWN_RET.has(b.key) ? ' ' + esc(S.retailers[KNOWN_RET.get(b.key)]?.name || '') : ''}` : ''}</small></div>
+      ${b.items.length ? `<button class="ic" data-act="pickOpen" data-b="${esc(b.key)}" aria-label="Produkte zeigen">${open ? '▾' : '›'}</button>` : '<span class="ic-space" aria-hidden="true"></span>'}</div>`;
     if (open) {
       r += b.items.sort((x, y) => live.has(y.product_key) - live.has(x.product_key) || x.name.localeCompare(y.name)).map(e => {
         const f = catalogProductFav(e);
