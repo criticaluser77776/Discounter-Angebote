@@ -631,10 +631,6 @@ const BRAND_RANK = { marke: 0, eigen: 1 };
 const sortBrands = list => list.sort((a, b) => (BRAND_RANK[a.type] ?? 2) - (BRAND_RANK[b.type] ?? 2) ||
   a.name.localeCompare(b.name, 'de', { sensitivity: 'base' }));
 
-// Zwischenüberschrift vor der ersten Handelsmarke (nur wenn es davor Markenprodukte gibt)
-const brandSep = (list, i) => list[i].type === 'eigen' && i > 0 && list[i - 1].type !== 'eigen'
-  ? '<span class="chip-sep">Handelsmarken</span>' : '';
-
 /* ---------- Bekannte Marken und Eigenmarken (brands.js) ---------- */
 
 const FOOD_CATS = ['Fleisch & Geflügel', 'Wurst & Aufschnitt', 'Fisch & Meeresfrüchte', 'Milch & Molkerei', 'Käse',
@@ -727,7 +723,7 @@ function renderCategory(cat, group) {
   if (group) {
     const brands = brandCounts(list);
     h += `<div class="chips wrap pick"><button class="chip ${S.brandOnly ? 'on' : ''}" data-act="brandOnly">Nur Markenprodukte</button>` +
-      brands.map((b, i) => brandSep(brands, i) + `<button class="chip ${S.brands.has(b.key) ? 'on' : ''}" data-act="brand" data-b="${esc(b.key)}">${esc(b.name)} <i>${b.n}</i></button>`).join('') + '</div>';
+      brands.map(b => `<button class="chip ${S.brands.has(b.key) ? 'on' : ''}" data-act="brand" data-b="${esc(b.key)}">${esc(b.name)} <i>${b.n}</i></button>`).join('') + '</div>';
     if (S.brandOnly) list = list.filter(o => o.brand_type === 'marke');
     if (S.brands.size) list = list.filter(o => S.brands.has(o.brand_key));
     const ex = findFav({ type: 'group', category: cat, group });
@@ -820,7 +816,7 @@ function renderSearch() {
   if (brands.length > 1 || S.qBrands.size) {
     h += '<p class="sub">Nach Marke eingrenzen:</p><div class="chips wrap pick">' +
       `<button class="chip ${S.qBrands.size ? '' : 'on'}" data-act="qBrand" data-b="">Alle</button>` +
-      brands.map((b, i) => brandSep(brands, i) + `<button class="chip ${S.qBrands.has(b.key) ? 'on' : ''}" data-act="qBrand" data-b="${esc(b.key)}">${esc(b.name)} <i>${b.n}</i></button>`).join('') +
+      brands.map(b => `<button class="chip ${S.qBrands.has(b.key) ? 'on' : ''}" data-act="qBrand" data-b="${esc(b.key)}">${esc(b.name)} <i>${b.n}</i></button>`).join('') +
       '</div>';
   }
   if (fuzzy && res.length) h += '<p class="sub">Keine genauen Treffer – ähnliche Schreibweisen:</p>';
@@ -997,7 +993,7 @@ function pickList(cat, group, live) {
   sortBrands(list);
   if (!list.length) return '<p class="empty">Nichts gefunden.</p>';
   // kleine Chips zum Markieren (wie in der Kategorie-Ansicht), Handelsmarken mit Zwischenüberschrift
-  return '<div class="chips wrap pick">' + list.map((b, i) => brandSep(list, i) +
+  return '<div class="chips wrap pick">' + list.map(b =>
     `<button class="chip ${d.brands.has(b.key) ? 'on' : ''}" data-act="draftBrand" data-b="${esc(b.key)}">${esc(b.name)}</button>`).join('') + '</div>';
 }
 
