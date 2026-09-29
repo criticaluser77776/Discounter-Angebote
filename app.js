@@ -943,16 +943,16 @@ function favRange(f, m) {
   }
   // je Produkt: [Anzahl, Ø, Tiefst, Höchst]; Ausreißer (falsch eingeordnete Produkte, z.B. „Body Butter“ bei Butter)
   // weglassen: Ø mehr als 3-mal über bzw. unter dem Median der Produkte
-  let ps = ents.map(({ hist: h }) => pack ? [h.pn, h.pavg, h.pmin, h.pmax] : h.u === u ? [h.n, h.avg, h.min, h.max] : null).filter(Boolean);
+  let ps = ents.map(({ hist: h }) => pack ? [h.pn, h.pavg, h.pmin, h.pmax, h.d0] : h.u === u ? [h.n, h.avg, h.min, h.max, h.d0] : null).filter(Boolean);
   if (ps.length > 2) {
     const med = ps.map(p => p[1]).sort((a, b) => a - b)[ps.length >> 1];
     ps = ps.filter(p => p[1] <= med * 3 && p[1] >= med / 3);
   }
-  let n = 0, sum = 0, min = Infinity, max = -Infinity;
-  for (const [c, a, lo, hi] of ps) { n += c; sum += a * c; min = Math.min(min, lo); max = Math.max(max, hi); }
+  let n = 0, sum = 0, min = Infinity, max = -Infinity, d0 = '9999';
+  for (const [c, a, lo, hi, d] of ps) { n += c; sum += a * c; min = Math.min(min, lo); max = Math.max(max, hi); if (d && d < d0) d0 = d; }
   if (!n) return null;
   const now = m.map(o => pack ? o.ep : (o.unit === u ? o.eu : null)).filter(v => v != null);
-  return { n, min, max, avg: sum / n, u, cur: now.length ? Math.min(...now) : null };
+  return { n, min, max, avg: sum / n, u, d0: d0 === '9999' ? null : d0, cur: now.length ? Math.min(...now) : null };
 }
 
 // Spanne eines einzelnen Produkts aus seinem Preisverlauf (Detailansicht)
@@ -963,26 +963,35 @@ function rowsRange(o, rows) {
   const vals = unit.length ? unit.map(r => r.unit_price) : recent.map(r => r.price).filter(Boolean);
   if (!vals.length) return null;
   return { n: vals.length, min: Math.min(...vals), max: Math.max(...vals), avg: vals.reduce((a, b) => a + b, 0) / vals.length,
-    u: unit.length ? o.unit : '', cur: unit.length ? o.eu : o.ep };
+    u: unit.length ? o.unit : '', cur: unit.length ? o.eu : o.ep, d0: (unit.length ? unit : recent)[0]?.valid_from || null };
 }
 
 function priceBar(r) {
   if (!r) return '';
   if (r.n < 3) return `<div class="pbar-few">Preisvergleich: erst ${r.n} Angebot${r.n === 1 ? '' : 'e'} erfasst – die Leiste füllt sich mit jeder Woche.</div>`;
-  const span = r.max - r.min;
-  const pos = v => span > 0 ? Math.max(0, Math.min(100, (v - r.min) / span * 100)) : 50;
+  // zweiteilige Skala: Ø immer in der Mitte, links Tiefstpreis…Ø, rechts Ø…Höchstpreis
+  const pos = v => {
+    const p = v <= r.avg ? (r.avg > r.min ? 50 * (v - r.min) / (r.avg - r.min) : 50)
+      : (r.max > r.avg ? 50 + 50 * (v - r.avg) / (r.max - r.avg) : 50);
+    return Math.max(0, Math.min(100, p));
+  };
+  // noch kein Verlauf: alle Angebote aus der laufenden Angebotswoche -> nur Vergleich der aktuellen Angebote
+  const onlyNow = !r.d0 || r.d0 >= new Date(Date.now() - 8 * 864e5).toISOString().slice(0, 10);
   let txt = 'zurzeit nicht im Angebot', cls = '';
   if (r.cur != null) {
     const p = Math.round((r.cur / r.avg - 1) * 100);
-    cls = pos(r.cur) < 34 ? 'g' : pos(r.cur) < 67 ? 'y' : 'r';
-    txt = (r.cur <= r.min + 0.005 ? 'Tiefstpreis · ' : '') + (p < 0 ? `${-p} % unter Ø` : p > 0 ? `${p} % über Ø` : 'genau Ø');
+    const rel = p < 0 ? `${-p} % unter Ø` : p > 0 ? `${p} % über Ø` : 'genau Ø';
+    cls = pos(r.cur) < 40 ? 'g' : pos(r.cur) <= 60 ? 'y' : 'r';
+    txt = onlyNow ? `${r.cur <= r.min + 0.005 ? `günstigstes der ${r.n} aktuellen Angebote · ` : ''}${rel}`
+      : (r.cur <= r.min + 0.005 ? 'Tiefstpreis · ' : '') + rel;
   }
   const unit = r.u ? `€/${esc(r.u)}` : '€';
-  return `<div class="pbar" title="Angebotspreise der letzten 12 Monate">
-    <div class="pbar-track"><span class="pbar-avg" style="left:${pos(r.avg)}%"></span>
+  return `<div class="pbar" title="Strich = Durchschnitt (Ø) der erfassten Angebotspreise, Punkt = bestes aktuelles Angebot">
+    <div class="pbar-track"><span class="pbar-avg" style="left:50%"></span>
       ${r.cur != null ? `<span class="pbar-dot ${cls}" style="left:${pos(r.cur)}%"></span>` : ''}</div>
     <div class="pbar-lbl"><span>${fmt(r.min)}</span><span>Ø ${fmt(r.avg)} ${unit}</span><span>${fmt(r.max)}</span></div>
-    <div class="pbar-txt"><b class="${cls}">${txt}</b> <span class="muted">· aus ${r.n} Angeboten</span></div></div>`;
+    <div class="pbar-txt"><b class="${cls}">${txt}</b> <span class="muted">· ${onlyNow ? 'Verlauf ab nächster Woche'
+      : `aus ${r.n} Angeboten seit ${new Date(r.d0).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' })}`}</span></div></div>`;
 }
 
 function draftFor(cat, group) {
