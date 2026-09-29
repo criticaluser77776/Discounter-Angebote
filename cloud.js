@@ -128,6 +128,9 @@ const Cloud = (() => {
       try { await caches.delete(CACHE); } catch { /* egal */ }
     },
     groupInfo: () => rest('rpc/group_info', { method: 'POST', body: {} }),
+    // Einladungen für neue Gruppen (nur fest freigeschaltete Mitglieder, prüft der Server)
+    createInvite: note => rest('rpc/app_create_invite', { method: 'POST', body: { p_note: note || null } }),
+    listInvites: () => rest('rpc/app_list_invites', { method: 'POST', body: {} }),
     adminMember: (id, action, name) => rest('rpc/admin_member', { method: 'POST',
       body: { p_id: id, p_action: action, p_name: name ?? null }, prefer: 'return=minimal' }),
     async adminGroupName(name) {

@@ -1623,8 +1623,16 @@ async function loadGroup() {
   if (!box) return;
   const h3 = box.closest('.panel').querySelector('h3');
   if (h3) h3.textContent = `👥 Gruppe „${grpInfo.group}“`;
+  // Einladungen für neue Gruppen: nur fest freigeschaltete Mitglieder (members.can_invite)
+  const inv = grpInfo.can_invite ? `<div class="grp">
+    <p style="margin:0 0 6px"><b>✉️ Einladungen für neue Gruppen</b></p>
+    <p class="muted" style="margin:0 0 8px;font-size:.82rem">Mit einem Einladungscode kann jemand unter „Neue Gruppe anlegen“
+      eine eigene Gruppe gründen und wird deren Admin. Jeder Code gilt einmal.</p>
+    <div class="grp-tools"><button class="btn small" data-act="grpInvite">Einladung erstellen</button>
+      <button class="btn small" data-act="grpInvites">Übersicht</button></div>
+    <div id="grpInv"></div></div>` : '';
   if (grpInfo.role !== 'admin') {
-    box.innerHTML = '<p class="muted" style="margin:0 0 8px;font-size:.85rem">Neue Mitglieder bekommen den Gruppen-Code vom Admin der Gruppe.</p>';
+    box.innerHTML = '<p class="muted" style="margin:0 0 8px;font-size:.85rem">Neue Mitglieder bekommen den Gruppen-Code vom Admin der Gruppe.</p>' + inv;
     return;
   }
   const ms = grpInfo.members || [];
@@ -1646,7 +1654,7 @@ async function loadGroup() {
     <div class="grp-tools">
       <button class="btn small" data-act="grpRename">Gruppe umbenennen</button>
       <button class="btn small" data-act="grpNewCode">Neuen Gruppen-Code erzeugen</button>
-    </div></div>`;
+    </div></div>${inv}`;
 }
 
 async function grpDo(fn, ok) {
@@ -1680,6 +1688,33 @@ Object.assign(onClick, {
   grpNewCode: () => {
     if (!confirm('Neuen Gruppen-Code erzeugen? Der alte Code gilt dann nicht mehr: alle anderen Geräte müssen den neuen Code einmal eingeben.')) return;
     grpDo(async () => { const c = await Cloud.adminNewCode(); alert(`Neuer Gruppen-Code:\n\n${c}\n\nBitte an die Mitglieder weitergeben.`); });
+  },
+  grpInvite: async () => {
+    const note = prompt('Für wen ist die Einladung? (optional, nur für deine Übersicht)', '');
+    if (note === null) return;
+    try {
+      const code = await Cloud.createInvite(note.trim());
+      $('#grpInv').innerHTML = `<p style="margin:10px 0 2px">Einladungscode${note.trim() ? ` für ${esc(note.trim())}` : ''}:</p>
+        <div class="grp-code-line"><code class="grp-code big">${esc(code)}</code>
+          <button class="btn small" data-act="grpInvCopy" data-code="${esc(code)}">Kopieren</button></div>
+        <p class="muted" style="margin:0;font-size:.82rem">Weitergeben mit dem Link zur App; dort „Neue Gruppe anlegen (mit Einladungscode)“.</p>`;
+    } catch (err) { toast(`Fehler: ${err.message}`); }
+  },
+  grpInvCopy: async el => {
+    const txt = `Einladung zur App „Angebote Preisvergleich“: ${location.origin}${location.pathname}
+`
+      + `Dort „Neue Gruppe anlegen (mit Einladungscode)“ wählen. Einladungscode: ${el.dataset.code}`;
+    try { await navigator.clipboard.writeText(txt); toast('Einladung kopiert (mit Link zur App)'); }
+    catch { toast('Kopieren nicht möglich – bitte abschreiben'); }
+  },
+  grpInvites: async () => {
+    try {
+      const rows = await Cloud.listInvites();
+      $('#grpInv').innerHTML = rows.length ? `<ul class="grp-members">${rows.slice().reverse().map(r => `<li><div class="grp-m">
+        <b>${esc(r.note || 'ohne Notiz')}</b><small class="muted">erstellt ${new Date(r.created_at).toLocaleDateString('de-DE')} ·
+        ${r.used_at ? `benutzt → Gruppe „${esc(r.group || '?')}“` : 'noch offen'}</small></div></li>`).join('')}</ul>`
+        : '<p class="muted" style="margin:10px 0 0">Noch keine Einladungen.</p>';
+    } catch (err) { toast(`Fehler: ${err.message}`); }
   },
   loginMode: el => showLogin('', el.dataset.mode),
   loginDone: () => afterLogin(),
