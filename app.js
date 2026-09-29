@@ -975,23 +975,12 @@ function priceBar(r) {
       : (r.max > r.avg ? 50 + 50 * (v - r.avg) / (r.max - r.avg) : 50);
     return Math.max(0, Math.min(100, p));
   };
-  // noch kein Verlauf: alle Angebote aus der laufenden Angebotswoche -> nur Vergleich der aktuellen Angebote
-  const onlyNow = !r.d0 || r.d0 >= new Date(Date.now() - 8 * 864e5).toISOString().slice(0, 10);
-  let txt = 'zurzeit nicht im Angebot', cls = '';
-  if (r.cur != null) {
-    const p = Math.round((r.cur / r.avg - 1) * 100);
-    const rel = p < 0 ? `${-p} % unter Ø` : p > 0 ? `${p} % über Ø` : 'genau Ø';
-    cls = pos(r.cur) < 40 ? 'g' : pos(r.cur) <= 60 ? 'y' : 'r';
-    txt = onlyNow ? `${r.cur <= r.min + 0.005 ? `günstigstes der ${r.n} aktuellen Angebote · ` : ''}${rel}`
-      : (r.cur <= r.min + 0.005 ? 'Tiefstpreis · ' : '') + rel;
-  }
+  const cls = r.cur == null ? '' : pos(r.cur) < 40 ? 'g' : pos(r.cur) <= 60 ? 'y' : 'r';
   const unit = r.u ? `€/${esc(r.u)}` : '€';
   return `<div class="pbar" title="Strich = Durchschnitt (Ø) der erfassten Angebotspreise, Punkt = bestes aktuelles Angebot">
     <div class="pbar-track"><span class="pbar-avg" style="left:50%"></span>
       ${r.cur != null ? `<span class="pbar-dot ${cls}" style="left:${pos(r.cur)}%"></span>` : ''}</div>
-    <div class="pbar-lbl"><span>${fmt(r.min)}</span><span>Ø ${fmt(r.avg)} ${unit}</span><span>${fmt(r.max)}</span></div>
-    <div class="pbar-txt"><b class="${cls}">${txt}</b> <span class="muted">· ${onlyNow ? 'Verlauf ab nächster Woche'
-      : `aus ${r.n} Angeboten seit ${new Date(r.d0).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' })}`}</span></div></div>`;
+    <div class="pbar-lbl"><span>${fmt(r.min)}</span><span>Ø ${fmt(r.avg)} ${unit}</span><span>${fmt(r.max)}</span></div></div>`;
 }
 
 function draftFor(cat, group) {

@@ -551,8 +551,6 @@ body.wizard #view { padding-bottom: 24px; }
 .pbar-dot.g { border-color: var(--accent); } .pbar-dot.y { border-color: var(--star); } .pbar-dot.r { border-color: var(--red); }
 .pbar-lbl { display: grid; grid-template-columns: 1fr auto 1fr; font-size: .72rem; color: var(--muted); }
 .pbar-lbl span:last-child { text-align: right; }
-.pbar-txt { font-size: .8rem; margin-top: 2px; }
-.pbar-txt b.g { color: var(--accent); } .pbar-txt b.y { color: var(--amber); } .pbar-txt b.r { color: var(--red); }
 .pbar-few { padding: 0 14px 10px 50px; font-size: .75rem; color: var(--muted); }
 .hist .pbar-few { padding: 2px 0 6px; }
 .pbar { position: relative; }
