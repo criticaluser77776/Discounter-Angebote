@@ -786,6 +786,9 @@ function updatePicker() {
   $('#draftInfo').innerHTML = draftInfo(S.draft);
 }
 
+// Tab beim Öffnen der App (Einstellung pro Gerät); 'last' = zuletzt genutzter Tab
+const START_TABS = [['', 'Kategorien'], ['all', 'Alle'], ['favs', 'Favoriten'], ['list', 'Einkaufszettel'], ['last', 'zuletzt genutzt']];
+
 function renderMore() {
   const f = S.f;
   const counts = countBy(S.offers, o => o.retailer);
@@ -802,6 +805,8 @@ function renderMore() {
     <div class="panel"><h3>Darstellung</h3>
       <label class="line">Farbschema <select data-set="theme">
         ${[['auto', 'wie System'], ['light', 'hell'], ['dark', 'dunkel']].map(([k, l]) => `<option value="${k}" ${f.theme === k ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
+      <label class="line">Start-Tab <select data-set="startTab">
+        ${START_TABS.map(([k, l]) => `<option value="${k}" ${(f.startTab || '') === k ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
     </div>
     <div class="panel"><h3>Daten</h3>
       <p style="margin:0 0 8px">${S.offers.length} Angebote · Stand ${S.generated ? new Date(S.generated).toLocaleString('de-DE') : '–'}</p>
@@ -1082,6 +1087,8 @@ function onRoute() {
   if (old) tabMem[old] = { hash: lastHash, y: window.scrollY, limit: S.limit, allFrom: S.allFrom, brands: S.brands, brandOnly: S.brandOnly,
     q: S.q, qFacet: S.qFacet, qBrands: new Set(S.qBrands), showWeak: S.showWeak };
   lastHash = location.hash || '#/';
+  const top = route()[0];
+  if (!top || ['c', 'all', 'favs', 'list'].includes(top)) save('lastTab', top === 'c' ? '' : top || '');
   const m = restoring && restoring.hash === lastHash ? restoring : null;
   restoring = null;
   S.limit = m?.limit || 60;
@@ -1625,6 +1632,10 @@ document.addEventListener('submit', async e => {
 // Start; aufgerufen am Ende von list.js, wenn alle Teile geladen sind
 function boot() {
   applyTheme();
+  if (!location.hash || location.hash === '#/') {  // App-Start ohne bestimmte Seite: eingestellten Start-Tab öffnen
+    const st = S.f.startTab === 'last' ? load('lastTab', '') : S.f.startTab || '';
+    if (st) { history.replaceState(null, '', '#/' + st); lastHash = location.hash; }
+  }
   render();
   if (Cloud.enabled && !Cloud.loggedIn()) showLogin();
   else { loadData(); Sync.run(); }
