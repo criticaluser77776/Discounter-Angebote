@@ -344,7 +344,7 @@ function disc(o) {
   return old ? Math.round(100 * (1 - (normalPrice(o) ?? o.ep) / old)) : null;
 }
 const priceLine = o => o.eu ? `${fmt(o.eu)} €/${o.unit}` : `${fmt(o.ep)} €`;
-const RETAILER_ORDER = ['edeka', 'lidl', 'aldi', 'penny', 'rossmann', 'netto', 'rewe', 'combi'];
+const RETAILER_ORDER = ['edeka', 'lidl', 'aldi', 'penny', 'marktkauf', 'rossmann', 'netto', 'rewe', 'combi'];
 const rname = o => S.retailers[o.retailer]?.name || o.retailer;
 
 function dshort(iso) {
