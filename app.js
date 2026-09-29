@@ -722,10 +722,13 @@ function renderCategory(cat, group) {
     groups.map(g => `<a class="chip ${g === group ? 'on' : ''}" href="#/c/${enc(cat)}/${enc(g)}">${esc(g)} <i>${gc[g]}</i></a>`).join('') + '</div>';
   if (group) {
     const brands = brandCounts(list);
+    // gewählte Marken ohne aktuelles Angebot trotzdem zeigen (zum Abwählen), z.B. aus der Favoriten-Auswahl
+    for (const k of S.brands) if (!brands.some(b => b.key === k)) brands.push({ key: k, name: KNOWN_NAME.get(k) || k, n: 0, type: KNOWN_RET.has(k) ? 'eigen' : 'marke' });
+    sortBrands(brands);
     h += `<div class="chips wrap pick"><button class="chip ${S.brandOnly ? 'on' : ''}" data-act="brandOnly">Nur Markenprodukte</button>` +
       brands.map(b => `<button class="chip ${S.brands.has(b.key) ? 'on' : ''}" data-act="brand" data-b="${esc(b.key)}">${esc(b.name)} <i>${b.n}</i></button>`).join('') + '</div>';
     if (S.brandOnly) list = list.filter(o => o.brand_type === 'marke');
-    if (S.brands.size) list = list.filter(o => S.brands.has(o.brand_key));
+    if (S.brands.size) list = list.filter(o => brandHit({ brands: [...S.brands] }, o));  // wie beim Favoriten (auch Titel)
     const ex = findFav({ type: 'group', category: cat, group });
     const same = ex && JSON.stringify(ex.brands || []) === JSON.stringify([...S.brands].sort()) && !!ex.brandOnly === S.brandOnly;
     const label = ex ? (same ? '★ Gemerkt' : '★ Auswahl übernehmen') : (S.brands.size ? '☆ Auswahl merken' : '☆ Gruppe merken');
@@ -954,7 +957,7 @@ async function renderPicker(cat, group) {
       }).join('') + '</div>';
   } else {
     const d = draftFor(cat, group);
-    h = `<div class="head"><h2>${esc(group)}</h2><a class="btn small" href="#/c/${enc(cat)}/${enc(group)}">Angebote ansehen</a></div>
+    h = `<div class="head"><h2>${esc(group)}</h2><a class="btn small" href="#/c/${enc(cat)}/${enc(group)}" data-act="pickView">Angebote ansehen</a></div>
       <p class="sub">${esc(cat)} · Marken antippen (keine Auswahl = alle Marken).</p>
       <div class="chips wrap"><label class="switch"><input type="checkbox" data-field="draftBrandOnly" ${d.brandOnly ? 'checked' : ''}> Nur Markenprodukte (ohne Handelsmarken)</label></div>
       <input id="pickQ" class="filter-input" type="search" placeholder="Marke filtern …" value="${esc(S.pickQ)}">
@@ -1431,6 +1434,7 @@ function onRoute() {
   S.allFrom = m?.allFrom || 0;
   S.brands = m?.brands || new Set();
   S.brandOnly = m?.brandOnly || false;
+  if (S.carry) { S.brands = S.carry.brands; S.brandOnly = S.carry.brandOnly; S.carry = null; }  // aus der Favoriten-Auswahl
   S.pickOpen = null;
   S.pickQ = '';
   const r = route();
@@ -1643,6 +1647,12 @@ const onClick = {
     else saveGroupFav(cat, g, [], false, S.offers);
     S.draft = null;
     rerender();
+  },
+  // „Angebote ansehen“ in der Favoriten-Auswahl: markierte Marken und „Nur Markenprodukte“ mitnehmen
+  pickView: (el, e) => {
+    e.preventDefault();
+    if (S.draft) S.carry = { brands: new Set(S.draft.brands), brandOnly: !!S.draft.brandOnly };
+    nav(el.getAttribute('href'));
   },
   pickOpen: el => { S.pickOpen = S.pickOpen === el.dataset.b ? null : el.dataset.b; updatePicker(); },
   draftBrand: el => {
