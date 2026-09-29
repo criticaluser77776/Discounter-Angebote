@@ -540,3 +540,17 @@ body.wizard #view { padding-bottom: 24px; }
 .chip-sep { flex-basis: 100%; font-size: .75rem; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; margin: 4px 0 -2px 4px; }
 .rows-sep { font-size: .75rem; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; padding: 12px 4px 4px; }
 .ic-space { width: 32px; flex-shrink: 0; }
+/* Preis-Leiste (Favoriten, Detailansicht): Tiefst- … Höchstpreis, Strich = Durchschnitt, Punkt = aktuell bestes Angebot */
+.pbar { padding: 2px 14px 10px 50px; }
+.hist .pbar { padding: 4px 0 8px; }
+.pbar-track { position: relative; height: 6px; border-radius: 3px; margin: 8px 0 4px;
+  background: linear-gradient(90deg, var(--accent), var(--star) 50%, var(--red)); opacity: .85; }
+.pbar-avg { position: absolute; top: -4px; width: 2px; height: 14px; margin-left: -1px; background: var(--text); opacity: .55; }
+.pbar-dot { position: absolute; top: 50%; width: 14px; height: 14px; margin: -7px 0 0 -7px; border-radius: 50%;
+  background: var(--surface); border: 3px solid var(--text); box-shadow: 0 1px 3px rgba(0,0,0,.25); }
+.pbar-dot.g { border-color: var(--accent); } .pbar-dot.y { border-color: var(--star); } .pbar-dot.r { border-color: var(--red); }
+.pbar-lbl { display: flex; justify-content: space-between; font-size: .72rem; color: var(--muted); }
+.pbar-txt { font-size: .8rem; margin-top: 2px; }
+.pbar-txt b.g { color: var(--accent); } .pbar-txt b.y { color: var(--amber); } .pbar-txt b.r { color: var(--red); }
+.pbar-few { padding: 0 14px 10px 50px; font-size: .75rem; color: var(--muted); }
+.hist .pbar-few { padding: 2px 0 6px; }

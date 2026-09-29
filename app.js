@@ -847,6 +847,10 @@ function renderFavs() {
   // Sortierung: Favoriten mit Angeboten zuerst (innerhalb in eigener Reihenfolge) oder ganz eigene Reihenfolge,
   // die per Griff ⠿ verschiebbar ist
   const own = S.favSort === 'own';
+  // Katalog (mit Preisspannen) für die Preis-Leisten nachladen
+  if (!S.catalog && !S.catLoading) {
+    S.catLoading = loadCatalog().then(() => { if (route()[0] === 'favs') rerender(); }).catch(() => {}).finally(() => { S.catLoading = null; });
+  }
   const rows = favRows(vis);
   if (!own) rows.sort((a, b) => (b.m.length > 0) - (a.m.length > 0));
   h += `<div class="sortbar"><span>${S.favs.length} Favorit${S.favs.length === 1 ? '' : 'en'}${own ? ' · zum Verschieben ⠿ ziehen' : ''}</span>
@@ -876,7 +880,7 @@ function renderFavs() {
           <button class="ic add ${wish ? 'on' : ''}" data-act="favWish" data-fid="${f.id}" aria-label="Auf den Einkaufszettel">＋</button>
           <button class="ic prio ${wish?.prio ? 'on' : ''}" data-act="favWish" data-fid="${f.id}" data-prio="1" aria-label="Wichtig auf den Einkaufszettel">❗</button>
           <button class="ic ${settings ? 'on' : ''}" data-act="favSettings" data-fid="${f.id}" aria-label="Einstellungen">⚙️</button>
-        </span></div></div>`;
+        </span></div></div>${priceBar(favRange(f, m))}`;
     if (settings) {
       // Einstellungen nur auf Wunsch (⚙️), nicht beim Aufklappen
       const unit = f.maxUnit || dominantUnit(m) || 'kg';
@@ -910,6 +914,75 @@ function renderFavs() {
 
 async function loadCatalog() {
   S.catalog = await DATA.catalog();
+}
+
+/* ---------- Preis-Leiste: Tiefst-, Durchschnitts-, Höchstpreis der letzten 12 Monate ---------- */
+
+// Katalogeintrag wie ein Angebot aufbereiten, damit favMatch darauf passt
+function catOffer(e) {
+  if (!e._o) {
+    e._o = { category: e.category, group: e.group, brand: e.brand, brand_key: e.brand_key, brand_type: e.brand_type,
+      tokens: e.tokens || [], title: e.name, description: '' };
+    prep(e._o);
+  }
+  return e._o;
+}
+
+// Spanne über alle Katalogprodukte eines Favoriten (Grundpreis in der häufigsten Einheit bzw. Packungspreis);
+// je Produkt fließt jedes Angebot (Händler x Angebotswoche) einmal ein. cur = bestes aktuelles Angebot
+function favRange(f, m) {
+  if (!S.catalog) return null;
+  const pack = byPack(f), g = { ...f, max: null };
+  const ents = S.catalog.filter(e => e.hist && (pack ? e.hist.pn : e.hist.n) && favMatch(g, catOffer(e)));
+  let u = '';
+  if (!pack) {
+    const w = {};
+    for (const e of ents) w[e.hist.u] = (w[e.hist.u] || 0) + e.hist.n;
+    u = Object.keys(w).sort((a, b) => w[b] - w[a])[0];
+    if (!u) return null;
+  }
+  // je Produkt: [Anzahl, Ø, Tiefst, Höchst]; Ausreißer (falsch eingeordnete Produkte, z.B. „Body Butter“ bei Butter)
+  // weglassen: Ø mehr als 3-mal über bzw. unter dem Median der Produkte
+  let ps = ents.map(({ hist: h }) => pack ? [h.pn, h.pavg, h.pmin, h.pmax] : h.u === u ? [h.n, h.avg, h.min, h.max] : null).filter(Boolean);
+  if (ps.length > 2) {
+    const med = ps.map(p => p[1]).sort((a, b) => a - b)[ps.length >> 1];
+    ps = ps.filter(p => p[1] <= med * 3 && p[1] >= med / 3);
+  }
+  let n = 0, sum = 0, min = Infinity, max = -Infinity;
+  for (const [c, a, lo, hi] of ps) { n += c; sum += a * c; min = Math.min(min, lo); max = Math.max(max, hi); }
+  if (!n) return null;
+  const now = m.map(o => pack ? o.ep : (o.unit === u ? o.eu : null)).filter(v => v != null);
+  return { n, min, max, avg: sum / n, u, cur: now.length ? Math.min(...now) : null };
+}
+
+// Spanne eines einzelnen Produkts aus seinem Preisverlauf (Detailansicht)
+function rowsRange(o, rows) {
+  const since = new Date(Date.now() - 365 * 864e5).toISOString().slice(0, 10);
+  const recent = rows.filter(r => r.valid_from >= since);
+  const unit = recent.filter(r => r.unit_price && r.unit === o.unit);
+  const vals = unit.length ? unit.map(r => r.unit_price) : recent.map(r => r.price).filter(Boolean);
+  if (!vals.length) return null;
+  return { n: vals.length, min: Math.min(...vals), max: Math.max(...vals), avg: vals.reduce((a, b) => a + b, 0) / vals.length,
+    u: unit.length ? o.unit : '', cur: unit.length ? o.eu : o.ep };
+}
+
+function priceBar(r) {
+  if (!r) return '';
+  if (r.n < 3) return `<div class="pbar-few">Preisvergleich: erst ${r.n} Angebot${r.n === 1 ? '' : 'e'} erfasst – die Leiste füllt sich mit jeder Woche.</div>`;
+  const span = r.max - r.min;
+  const pos = v => span > 0 ? Math.max(0, Math.min(100, (v - r.min) / span * 100)) : 50;
+  let txt = 'zurzeit nicht im Angebot', cls = '';
+  if (r.cur != null) {
+    const p = Math.round((r.cur / r.avg - 1) * 100);
+    cls = pos(r.cur) < 34 ? 'g' : pos(r.cur) < 67 ? 'y' : 'r';
+    txt = (r.cur <= r.min + 0.005 ? 'Tiefstpreis · ' : '') + (p < 0 ? `${-p} % unter Ø` : p > 0 ? `${p} % über Ø` : 'genau Ø');
+  }
+  const unit = r.u ? `€/${esc(r.u)}` : '€';
+  return `<div class="pbar" title="Angebotspreise der letzten 12 Monate">
+    <div class="pbar-track"><span class="pbar-avg" style="left:${pos(r.avg)}%"></span>
+      ${r.cur != null ? `<span class="pbar-dot ${cls}" style="left:${pos(r.cur)}%"></span>` : ''}</div>
+    <div class="pbar-lbl"><span>${fmt(r.min)}</span><span>Ø ${fmt(r.avg)} ${unit}</span><span>${fmt(r.max)}</span></div>
+    <div class="pbar-txt"><b class="${cls}">${txt}</b> <span class="muted">· aus ${r.n} Angeboten</span></div></div>`;
 }
 
 function draftFor(cat, group) {
@@ -1317,7 +1390,7 @@ function renderHistory(o, rows) {
     const pct = Math.round((cur / val(best) - 1) * 100);
     hint = `Bisher bestes Angebot: ${bestTxt} – aktuell ${pct}% teurer. Wenn du es nicht sofort brauchst, lohnt sich evtl. warten.`;
   }
-  el.innerHTML = `<h3>Preisverlauf</h3><p class="hint" style="margin:6px 0">${hint}</p>
+  el.innerHTML = `<h3>Preisverlauf</h3>${priceBar(rowsRange(o, rows))}<p class="hint" style="margin:6px 0">${hint}</p>
     <table>${rows.slice(-12).reverse().map(r => `<tr><td>${dshort(r.valid_from)}</td><td>${esc(S.retailers[r.retailer]?.name || r.retailer)}</td>
       <td style="text-align:right">${fmt(r.price)} €</td><td style="text-align:right" class="muted">${r.unit_price ? fmt(r.unit_price) + ' €/' + esc(r.unit) : ''}</td></tr>`).join('')}</table>`;
 }
