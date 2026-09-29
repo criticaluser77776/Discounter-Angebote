@@ -959,9 +959,9 @@ async function renderPicker(cat, group) {
   } else {
     const d = draftFor(cat, group);
     h = `<div class="head"><h2>${esc(group)}</h2><a class="btn small" href="#/c/${enc(cat)}/${enc(group)}">Angebote ansehen</a></div>
-      <p class="sub">${esc(cat)} · Marken ankreuzen (keine Auswahl = alle Marken) oder mit ★ einzelne Produkte merken.</p>
+      <p class="sub">${esc(cat)} · Marken antippen (keine Auswahl = alle Marken).</p>
       <div class="chips wrap"><label class="switch"><input type="checkbox" data-field="draftBrandOnly" ${d.brandOnly ? 'checked' : ''}> Nur Markenprodukte (ohne Handelsmarken)</label></div>
-      <input id="pickQ" class="filter-input" type="search" placeholder="Marke oder Produkt filtern …" value="${esc(S.pickQ)}">
+      <input id="pickQ" class="filter-input" type="search" placeholder="Marke filtern …" value="${esc(S.pickQ)}">
       <div id="pickList">${pickList(cat, group, live)}</div>
       <div class="savebar"><span id="draftInfo">${draftInfo(d)}</span>
         <span style="display:flex;gap:8px">${d.exists ? '<button class="btn danger" data-act="draftDel">Entfernen</button>' : ''}
@@ -993,36 +993,12 @@ function pickList(cat, group, live) {
   // gewählte Marken, die weder im Katalog noch in der Liste stehen, nicht verlieren
   for (const k of d.brands) if (!brands.has(k)) brands.set(k, { key: k, name: KNOWN_NAME.get(k) || k, type: KNOWN_RET.has(k) ? 'eigen' : 'marke', items: [], live: 0, known: true });
   let list = [...brands.values()];
-  if (q) {
-    list = list.map(b => {
-      if (norm(b.name).includes(q)) return b;
-      const items = b.items.filter(e => norm(e.name).includes(q));
-      return items.length ? { ...b, items, forceOpen: true } : null;
-    }).filter(Boolean);
-  }
+  if (q) list = list.filter(b => norm(b.name).includes(q) || b.items.some(e => norm(e.name).includes(q)));
   sortBrands(list);
   if (!list.length) return '<p class="empty">Nichts gefunden.</p>';
-  return '<div class="rows">' + list.map((b, i) => {
-    const on = d.brands.has(b.key);
-    const sep = brandSep(list, i) ? '<div class="rows-sep">Handelsmarken</div>' : '';
-    const open = b.forceOpen || S.pickOpen === b.key;
-    let r = sep + `<div class="row ${on ? 'sel' : ''}">
-      <button class="check ${on ? 'on' : ''}" data-act="draftBrand" data-b="${esc(b.key)}">✓</button>
-      <div class="t" data-act="pickOpen" data-b="${esc(b.key)}"><b>${esc(b.name)}</b>
-        <small>${b.known ? 'noch nicht im Angebot gesehen' : `${b.items.length} Produkt${b.items.length > 1 ? 'e' : ''}`}${b.live ? ` · <span class="live">${b.live} im Angebot</span>` : ''}${b.type === 'eigen' ? ` · Handelsmarke${KNOWN_RET.has(b.key) ? ' ' + esc(S.retailers[KNOWN_RET.get(b.key)]?.name || '') : ''}` : ''}</small></div>
-      ${b.items.length ? `<button class="ic" data-act="pickOpen" data-b="${esc(b.key)}" aria-label="Produkte zeigen">${open ? '▾' : '›'}</button>` : '<span class="ic-space" aria-hidden="true"></span>'}</div>`;
-    if (open) {
-      r += b.items.sort((x, y) => live.has(y.product_key) - live.has(x.product_key) || x.name.localeCompare(y.name)).map(e => {
-        const f = catalogProductFav(e);
-        const has = !!findFav(f);
-        const best = e.best?.unit_price ? `${fmt(e.best.unit_price)} €/${e.best.unit}` : e.best ? `${fmt(e.best.price)} €` : '';
-        return `<div class="row sub">
-          <button class="ic ${has ? 'on' : ''}" data-act="pickProduct" data-pk="${esc(e.product_key)}">★</button>
-          <div class="t">${esc(e.name)}<small>${live.has(e.product_key) ? '<span class="live">im Angebot</span> · ' : ''}${best ? `bester Preis bisher ${best} (${esc(S.retailers[e.best.retailer]?.name || e.best.retailer)})` : ''}</small></div></div>`;
-      }).join('');
-    }
-    return r;
-  }).join('') + '</div>';
+  // kleine Chips zum Markieren (wie in der Kategorie-Ansicht), Handelsmarken mit Zwischenüberschrift
+  return '<div class="chips wrap pick">' + list.map((b, i) => brandSep(list, i) +
+    `<button class="chip ${d.brands.has(b.key) ? 'on' : ''}" data-act="draftBrand" data-b="${esc(b.key)}">${esc(b.name)}</button>`).join('') + '</div>';
 }
 
 const catalogProductFav = e => ({
