@@ -134,13 +134,28 @@ function put(kind, obj) {
   Sync.soon();
 }
 
-function liLoad() {
-  const d = load('li.rows', null);
-  if (d) for (const k of LI_KINDS) for (const o of d[k] || []) R[k].set(o.id, o);
-  // Standard-Kategorien (u = 1: jede Änderung eines Geräts ist neuer)
+// Standard-Kategorien (u = 1: jede Änderung eines Geräts ist neuer)
+function liDefaultCats() {
   LI_DEFAULT_CATS.forEach(([id, name, emoji, color], i) => {
     if (!R.cat.has(id)) R.cat.set(id, { id, name, emoji, color, order: i * 10, hidden: false, u: 1 });
   });
+}
+
+// Gerät ist in eine andere Gruppe gewechselt: lokalen Zettel verwerfen (gehört der alten Gruppe) und alles neu
+// holen. Die eigenen Favoriten (S.favs) bleiben und werden danach per liFavsPush in die neue Gruppe gesendet.
+function liResetGroup() {
+  for (const k of LI_KINDS) R[k].clear();
+  LI.dirty.clear();
+  LI.cursor = null;
+  save('li.cursor', null);
+  liDefaultCats();
+  liSave();
+}
+
+function liLoad() {
+  const d = load('li.rows', null);
+  if (d) for (const k of LI_KINDS) for (const o of d[k] || []) R[k].set(o.id, o);
+  liDefaultCats();
   if (!d) liMigrate();
   // endgültig löschen: seit 60 Tagen gelöschte, bereits abgeglichene Einträge
   const old = Date.now() - 60 * 864e5;

@@ -814,11 +814,12 @@ function renderMore() {
       ${DATA.server ? '' : '<p class="muted" style="margin:0 0 8px;font-size:.85rem">Die Angebote werden täglich vom PC zu Hause abgerufen und hochgeladen.</p>'}
       <div id="status"><p class="muted">Status wird geladen …</p></div>
     </div>
-    ${Cloud.enabled ? `<div class="panel"><h3>Familie</h3>
+    ${Cloud.enabled ? `<div class="panel"><h3>👥 Gruppe${Cloud.group() ? ' „' + esc(Cloud.group()) + '“' : ''}</h3>
       <label class="line">Dein Name <input class="filter-input" style="margin:0;width:auto;flex:1" data-set-name value="${esc(Cloud.name())}" placeholder="z.B. Anna"></label>
       <p class="muted" style="margin:4px 0 8px;font-size:.85rem">Erscheint beim Einkaufszettel als „von …“ bei den anderen.
         Deine Favoriten werden zwischen allen Geräten mit demselben Namen abgeglichen.</p>
-      <button class="btn small" data-act="logout">Familien-Code auf diesem Gerät entfernen</button></div>` : ''}
+      <div id="groupAdmin"></div>
+      <button class="btn small" data-act="logout">Gruppen-Code auf diesem Gerät entfernen</button></div>` : ''}
     <div class="panel"><h3>Über die App</h3>
       ${appVersionLine()}
     </div>
@@ -827,6 +828,7 @@ function renderMore() {
       iPhone/Safari: Teilen → „Zum Home-Bildschirm“.</p>
     </div>`;
   loadStatus();
+  if (Cloud.enabled && Cloud.loggedIn()) loadGroup();
 }
 
 // Version und Zeitpunkt der veröffentlichten App (config.js, von tools/deploy_pages.py geschrieben)
@@ -1358,7 +1360,7 @@ const onClick = {
   },
   closeSheet: () => closeSheet(),
   logout: async () => {
-    if (!confirm('Familien-Code auf diesem Gerät entfernen? Zum erneuten Zugriff muss er wieder eingegeben werden.')) return;
+    if (!confirm('Gruppen-Code auf diesem Gerät entfernen? Zum erneuten Zugriff muss er wieder eingegeben werden.')) return;
     await Cloud.logout();
     S.loaded = false;
     showLogin();
@@ -1596,34 +1598,154 @@ async function loadData() {
   }
 }
 
-// Zugang zur veröffentlichten Fassung: Familien-Code + Name, einmal je Gerät
-function showLogin(msg) {
+/* ---------- Gruppe (Mehr → Gruppe) ---------- */
+
+const agoText = iso => {
+  const m = (Date.now() - Date.parse(iso)) / 60e3;
+  if (m < 60) return 'gerade eben';
+  if (m < 24 * 60) return `vor ${Math.round(m / 60)} Std.`;
+  const d = Math.round(m / 1440);
+  return d === 1 ? 'gestern' : d < 30 ? `vor ${d} Tagen` : new Date(iso).toLocaleDateString('de-DE');
+};
+
+let grpInfo = null;
+async function loadGroup() {
+  if (!$('#groupAdmin')) return;
+  try {
+    await Cloud.touch(true);  // Rolle und Gruppenname aktuell halten (z.B. nach Übergabe der Admin-Rolle)
+    grpInfo = await Cloud.groupInfo();
+  } catch (err) {
+    const b = $('#groupAdmin');
+    if (b) b.innerHTML = `<p class="muted" style="font-size:.85rem">Gruppe konnte nicht geladen werden: ${esc(err.message)}</p>`;
+    return;
+  }
+  const box = $('#groupAdmin');
+  if (!box) return;
+  const h3 = box.closest('.panel').querySelector('h3');
+  if (h3) h3.textContent = `👥 Gruppe „${grpInfo.group}“`;
+  if (grpInfo.role !== 'admin') {
+    box.innerHTML = '<p class="muted" style="margin:0 0 8px;font-size:.85rem">Neue Mitglieder bekommen den Gruppen-Code vom Admin der Gruppe.</p>';
+    return;
+  }
+  const ms = grpInfo.members || [];
+  box.innerHTML = `<div class="grp">
+    <p style="margin:0 0 6px"><b>Du bist Admin dieser Gruppe.</b></p>
+    <div class="grp-code-line">Gruppen-Code: <code class="grp-code">${esc(Cloud.code())}</code>
+      <button class="btn small" data-act="grpCopy">Kopieren</button></div>
+    <p class="muted" style="margin:2px 0 10px;font-size:.82rem">Mit diesem Code schalten andere die App für eure Gruppe frei.</p>
+    <h4 style="margin:6px 0">Mitglieder (${ms.length})</h4>
+    <ul class="grp-members">${ms.map(m => `<li>
+      <div class="grp-m"><b>${esc(m.name || 'ohne Namen')}</b>${m.id === grpInfo.me ? ' <span class="muted">(du)</span>' : ''}
+        ${m.role === 'admin' ? '<span class="grp-badge">Admin</span>' : ''}
+        <small class="muted">zuletzt ${agoText(m.last_seen)}</small></div>
+      ${m.id === grpInfo.me ? '' : `<div class="grp-acts">
+        <button class="btn small" data-act="grpMember" data-a="rename" data-id="${m.id}" title="Umbenennen">✏️</button>
+        <button class="btn small" data-act="grpMember" data-a="admin" data-id="${m.id}" title="Zum Admin machen">👑</button>
+        <button class="btn small" data-act="grpMember" data-a="remove" data-id="${m.id}" title="Entfernen">🗑</button></div>`}
+    </li>`).join('')}</ul>
+    <div class="grp-tools">
+      <button class="btn small" data-act="grpRename">Gruppe umbenennen</button>
+      <button class="btn small" data-act="grpNewCode">Neuen Gruppen-Code erzeugen</button>
+    </div></div>`;
+}
+
+async function grpDo(fn, ok) {
+  try { await fn(); if (ok) toast(ok); } catch (err) { toast(`Fehler: ${err.message}`); }
+  loadGroup();
+}
+
+Object.assign(onClick, {
+  grpCopy: async () => {
+    try { await navigator.clipboard.writeText(Cloud.code()); toast('Gruppen-Code kopiert'); }
+    catch { toast('Kopieren nicht möglich – bitte abschreiben'); }
+  },
+  grpMember: el => {
+    const m = (grpInfo?.members || []).find(x => x.id === el.dataset.id);
+    if (!m) return;
+    const a = el.dataset.a;
+    if (a === 'rename') {
+      const n = prompt('Neuer Name:', m.name);
+      if (n && n.trim()) grpDo(() => Cloud.adminMember(m.id, 'rename', n.trim()), 'Umbenannt');
+    } else if (a === 'admin') {
+      if (confirm(`${m.name} zum Admin machen? Du gibst die Admin-Rolle damit ab.`)) grpDo(() => Cloud.adminMember(m.id, 'admin'), 'Admin übergeben');
+    } else if (a === 'remove') {
+      if (confirm(`${m.name} aus der Gruppe entfernen? Das Gerät hat danach keinen Zugang mehr.\n\nTipp: Danach auch einen neuen Gruppen-Code erzeugen, sonst kann die Person mit einem anderen Gerät wieder beitreten.`))
+        grpDo(() => Cloud.adminMember(m.id, 'remove'), 'Entfernt');
+    }
+  },
+  grpRename: () => {
+    const n = prompt('Neuer Name der Gruppe:', grpInfo?.group || '');
+    if (n && n.trim()) grpDo(() => Cloud.adminGroupName(n.trim()), 'Gruppe umbenannt');
+  },
+  grpNewCode: () => {
+    if (!confirm('Neuen Gruppen-Code erzeugen? Der alte Code gilt dann nicht mehr: alle anderen Geräte müssen den neuen Code einmal eingeben.')) return;
+    grpDo(async () => { const c = await Cloud.adminNewCode(); alert(`Neuer Gruppen-Code:\n\n${c}\n\nBitte an die Mitglieder weitergeben.`); });
+  },
+  loginMode: el => showLogin('', el.dataset.mode),
+  loginDone: () => afterLogin(),
+});
+
+// Zugang zur veröffentlichten Fassung: Gruppen-Code + Name, einmal je Gerät (oder neue Gruppe per Einladung)
+function showLogin(msg, mode = 'join') {
   S.loaded = false;
-  view.innerHTML = `<div class="panel login">
-    <h2>🔒 Familien-Zugang</h2>
-    <p class="muted">Einmal auf diesem Gerät den Familien-Code eingeben – danach bleibt die App freigeschaltet.</p>
-    ${msg && msg !== 'Bitte Familien-Code eingeben' ? `<p class="err">${esc(msg)}</p>` : ''}
+  const err = msg && msg !== 'Bitte Gruppen-Code eingeben' ? `<p class="err">${esc(msg)}</p>` : '';
+  const nameField = `<label class="li-f">Dein Name (auf allen eigenen Geräten gleich – dann werden deine Favoriten abgeglichen)<input id="loginName" value="${esc(Cloud.name())}" placeholder="z.B. Anna" autocomplete="given-name" required></label>`;
+  view.innerHTML = mode === 'create' ? `<div class="panel login">
+    <h2>👥 Neue Gruppe anlegen</h2>
+    <p class="muted">Dafür brauchst du einen Einladungscode. Du wirst Admin der Gruppe und bekommst den Gruppen-Code für die anderen.</p>
+    ${err}
+    <form id="createForm">
+      <label class="li-f">Einladungscode<input id="inviteCode" autocomplete="off" autocapitalize="characters" spellcheck="false" required></label>
+      <label class="li-f">Name der Gruppe<input id="groupName" placeholder="z.B. Familie Müller" maxlength="40" required></label>
+      ${nameField}
+      <button class="btn primary">Gruppe anlegen</button>
+    </form>
+    <p class="login-alt"><button class="btn small" data-act="loginMode" data-mode="join">Ich habe schon einen Gruppen-Code</button></p></div>`
+  : `<div class="panel login">
+    <h2>🔒 Zugang</h2>
+    <p class="muted">Einmal auf diesem Gerät den Gruppen-Code eingeben – danach bleibt die App freigeschaltet.</p>
+    ${err}
     <form id="loginForm">
-      <label class="li-f">Familien-Code<input id="loginCode" autocomplete="off" autocapitalize="off" spellcheck="false" required></label>
-      <label class="li-f">Dein Name (auf allen eigenen Geräten gleich – dann werden deine Favoriten abgeglichen)<input id="loginName" value="${esc(Cloud.name())}" placeholder="z.B. Anna" autocomplete="given-name" required></label>
+      <label class="li-f">Gruppen-Code<input id="loginCode" autocomplete="off" autocapitalize="off" spellcheck="false" required></label>
+      ${nameField}
       <button class="btn primary">Freischalten</button>
-    </form></div>`;
+    </form>
+    <p class="login-alt"><button class="btn small" data-act="loginMode" data-mode="create">Neue Gruppe anlegen (mit Einladungscode)</button></p></div>`;
+}
+
+// nach Anmeldung/Anlegen: Zettel einer anderen Gruppe verwerfen, Favoriten senden, Daten laden
+async function afterLogin() {
+  if (Cloud.switchedGroup()) liResetGroup();
+  view.innerHTML = '<p class="loading">Lade Angebote …</p>';
+  liFavsPush(S.favs);
+  await loadData();
+  Sync.run();
 }
 
 document.addEventListener('submit', async e => {
+  if (e.target.id === 'createForm') {
+    e.preventDefault();
+    e.target.querySelector('button').disabled = true;
+    try {
+      const code = await Cloud.createGroup($('#inviteCode').value, $('#groupName').value, $('#loginName').value);
+      view.innerHTML = `<div class="panel login">
+        <h2>✅ Gruppe „${esc(Cloud.group())}“ angelegt</h2>
+        <p>Euer Gruppen-Code:</p><p class="grp-code big">${esc(code)}</p>
+        <p class="muted">Gib ihn an die anderen weiter – damit schalten sie die App frei. Du findest ihn jederzeit unter
+          Mehr → Gruppe.</p>
+        <button class="btn primary" data-act="loginDone">Weiter</button></div>`;
+    } catch (err) {
+      showLogin(err.message, 'create');
+    }
+    return;
+  }
   if (e.target.id !== 'loginForm') return;
   e.preventDefault();
   const btn = e.target.querySelector('button');
   btn.disabled = true;
   try {
-    if (await Cloud.login($('#loginCode').value, $('#loginName').value)) {
-      view.innerHTML = '<p class="loading">Lade Angebote …</p>';
-      liFavsPush(S.favs);
-      await loadData();
-      Sync.run();
-    } else {
-      showLogin('Der Code stimmt nicht.');
-    }
+    if (await Cloud.login($('#loginCode').value, $('#loginName').value)) await afterLogin();
+    else showLogin('Der Code stimmt nicht.');
   } catch (err) {
     showLogin(err instanceof LoginNeeded ? 'Der Code stimmt nicht.' : `Keine Verbindung: ${err.message}`);
   }
@@ -1638,6 +1760,13 @@ function boot() {
   }
   render();
   if (Cloud.enabled && !Cloud.loggedIn()) showLogin();
-  else { loadData(); Sync.run(); }
+  else {
+    loadData();
+    Sync.run();
+    // Gerät in der Gruppe melden (letzter Besuch, höchstens stündlich); bisherige Geräte werden so Mitglied
+    if (Cloud.enabled) Cloud.touch().then(() => {
+      if (Cloud.switchedGroup()) { liResetGroup(); liFavsPush(S.favs); Sync.run(); liRefresh(); }
+    }).catch(() => {});
+  }
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
 }
