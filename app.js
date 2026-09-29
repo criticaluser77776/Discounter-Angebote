@@ -953,46 +953,92 @@ function updatePicker() {
 // Tab beim Öffnen der App (Einstellung pro Gerät); 'last' = zuletzt genutzter Tab
 const START_TABS = [['', 'Kategorien'], ['all', 'Alle'], ['favs', 'Favoriten'], ['list', 'Einkaufszettel'], ['last', 'zuletzt genutzt']];
 
-function renderMore() {
+// „Mehr“: Menü mit Untermenüs (#/more/<bereich>)
+const MORE_SECTIONS = [
+  { id: 'gruppe', ico: '👥', title: 'Gruppe', show: () => Cloud.enabled },
+  { id: 'gebiet', ico: '📍', title: 'Gebiet & Händler' },
+  { id: 'filter', ico: '🔎', title: 'Filter' },
+  { id: 'darstellung', ico: '🎨', title: 'Darstellung' },
+  { id: 'daten', ico: '📊', title: 'Daten & Abruf' },
+  { id: 'info', ico: 'ℹ️', title: 'Über die App' },
+];
+const FILTER_OPTS = [
+  ['hideApp', 'App-/Kundenkartenpreise ignorieren (Normalpreis verwenden)'],
+  ['hideOnline', 'Nur-online-Angebote ausblenden'],
+  ['onlyCurrent', 'Nur aktuell gültige (keine Vorschau auf nächste Woche)'],
+  ['hideNonFood', 'Non-Food ausblenden'],
+];
+const THEMES = [['auto', 'wie System'], ['light', 'hell'], ['dark', 'dunkel']];
+
+// Kurzbeschreibung je Bereich für das Menü
+function moreSummary(id) {
   const f = S.f;
-  S.areaDraft = null;
-  const counts = countBy(S.offers, o => o.retailer);
-  view.innerHTML = `<div class="head"><h2>⚙️ Einstellungen & Daten</h2></div>
-    <div class="panel"><h3>Filter</h3>
-      <label class="line switch"><input type="checkbox" data-set="hideApp" ${f.hideApp ? 'checked' : ''}> App-/Kundenkartenpreise ignorieren (Normalpreis verwenden)</label>
-      <label class="line switch"><input type="checkbox" data-set="hideOnline" ${f.hideOnline ? 'checked' : ''}> Nur-online-Angebote ausblenden</label>
-      <label class="line switch"><input type="checkbox" data-set="onlyCurrent" ${f.onlyCurrent ? 'checked' : ''}> Nur aktuell gültige (keine Vorschau auf nächste Woche)</label>
-      <label class="line switch"><input type="checkbox" data-set="hideNonFood" ${f.hideNonFood ? 'checked' : ''}> Non-Food ausblenden</label>
-      <p class="muted" style="margin:6px 0 0;font-size:.85rem">Oben über die farbigen Chips Händler markieren: dann werden nur diese angezeigt, ohne Markierung alle.</p>
-    </div>
-    ${areaPanel()}
-    <div class="panel"><h3>Darstellung</h3>
-      <label class="line">Farbschema <select data-set="theme">
-        ${[['auto', 'wie System'], ['light', 'hell'], ['dark', 'dunkel']].map(([k, l]) => `<option value="${k}" ${f.theme === k ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
-      <label class="line">Start-Tab <select data-set="startTab">
-        ${START_TABS.map(([k, l]) => `<option value="${k}" ${(f.startTab || '') === k ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
-    </div>
-    <div class="panel"><h3>Daten</h3>
-      <p style="margin:0 0 8px">${S.offers.length} Angebote · Stand ${S.generated ? new Date(S.generated).toLocaleString('de-DE') : '–'}</p>
-      <p class="muted" style="margin:0 0 8px;font-size:.85rem">${Object.entries(S.retailers).map(([k, r]) => `${esc(r.name)} ${counts[k] || 0}`).join(' · ')}</p>
-      ${DATA.server ? '' : '<p class="muted" style="margin:0 0 8px;font-size:.85rem">Die Angebote werden täglich vom PC zu Hause abgerufen und hochgeladen.</p>'}
-      <div id="status"><p class="muted">Status wird geladen …</p></div>
-    </div>
-    ${Cloud.enabled ? `<div class="panel"><h3>👥 Gruppe${Cloud.group() ? ' „' + esc(Cloud.group()) + '“' : ''}</h3>
-      <label class="line">Dein Name <input class="filter-input" style="margin:0;width:auto;flex:1" data-set-name value="${esc(Cloud.name())}" placeholder="z.B. Anna"></label>
+  if (id === 'gruppe') return Cloud.group() ? `„${Cloud.group()}“ · ${Cloud.name() || 'ohne Namen'}${Cloud.isAdmin() ? ' · Admin' : ''}` : Cloud.name();
+  if (id === 'gebiet') {
+    const s = grpSet(), parts = [];
+    if (s.home) parts.push(`${S.placeName[s.home] || s.home} ${s.radius ? s.radius + ' km' : '(ganzer Großraum)'}`);
+    if (s.route?.stops?.length > 1) parts.push(`Strecke${s.route.km ? ' ' + s.route.km + ' km' : ''}`);
+    return `${parts.length ? parts.join(' + ') : 'ganzer Großraum'} · ${s.retailers?.length ? s.retailers.length + ' Händler' : 'alle Händler'}`;
+  }
+  if (id === 'filter') { const n = FILTER_OPTS.filter(([k]) => f[k]).length; return n ? `${n} aktiv` : 'keine'; }
+  if (id === 'darstellung') return `${(THEMES.find(x => x[0] === f.theme) || THEMES[0])[1]} · Start: ${(START_TABS.find(x => x[0] === (f.startTab || '')) || START_TABS[0])[1]}`;
+  if (id === 'daten') return `${S.offers.length} Angebote · Stand ${S.generated ? new Date(S.generated).toLocaleString('de-DE', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '–'}`;
+  if (id === 'info') return window.APP_VERSION ? `Version ${window.APP_VERSION.number}` : 'Installieren, Version';
+  return '';
+}
+
+function morePanel(id) {
+  const f = S.f;
+  if (id === 'gruppe') return `<div class="panel">
+      <label class="line">Dein Name <input class="filter-input" style="margin:0;width:auto;flex:1;min-width:0" data-set-name value="${esc(Cloud.name())}" placeholder="z.B. Anna"></label>
       <p class="muted" style="margin:4px 0 8px;font-size:.85rem">Erscheint beim Einkaufszettel als „von …“ bei den anderen.
         Deine Favoriten werden zwischen allen Geräten mit demselben Namen abgeglichen.</p>
       <div id="groupAdmin"></div>
-      <button class="btn small" data-act="logout">Gruppen-Code auf diesem Gerät entfernen</button></div>` : ''}
-    <div class="panel"><h3>Über die App</h3>
-      ${appVersionLine()}
-    </div>
+      <button class="btn small" data-act="logout">Gruppen-Code auf diesem Gerät entfernen</button></div>`;
+  if (id === 'gebiet') return areaPanel();
+  if (id === 'filter') return `<div class="panel">
+      ${FILTER_OPTS.map(([k, l]) => `<label class="line switch"><input type="checkbox" data-set="${k}" ${f[k] ? 'checked' : ''}> ${l}</label>`).join('')}
+      <p class="muted" style="margin:6px 0 0;font-size:.85rem">Händler wählst du oben über die farbigen Chips: markierte werden angezeigt, ohne Markierung alle.</p>
+    </div>`;
+  if (id === 'darstellung') return `<div class="panel">
+      <label class="line">Farbschema <select data-set="theme">
+        ${THEMES.map(([k, l]) => `<option value="${k}" ${f.theme === k ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
+      <label class="line">Start-Tab <select data-set="startTab">
+        ${START_TABS.map(([k, l]) => `<option value="${k}" ${(f.startTab || '') === k ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
+    </div>`;
+  if (id === 'daten') {
+    const counts = countBy(S.offers, o => o.retailer);
+    return `<div class="panel">
+      <p style="margin:0 0 8px">${S.offers.length} Angebote · Stand ${S.generated ? new Date(S.generated).toLocaleString('de-DE') : '–'}</p>
+      <p class="muted" style="margin:0 0 8px;font-size:.85rem">${Object.entries(S.retailers).map(([k, r]) => `${esc(r.name)} ${counts[k] || 0}`).join(' · ')}</p>
+      ${DATA.server ? '' : '<p class="muted" style="margin:0 0 8px;font-size:.85rem">Die Angebote werden täglich um 5 und 14 Uhr automatisch abgerufen.</p>'}
+      <div id="status"><p class="muted">Status wird geladen …</p></div>
+    </div>`;
+  }
+  if (id === 'info') return `<div class="panel"><h3>Version</h3>${appVersionLine()}</div>
     <div class="panel"><h3>Als App installieren</h3>
       <p class="muted" style="margin:0;font-size:.88rem">Android/Chrome: Menü ⋮ → „App installieren“.
       iPhone/Safari: Teilen → „Zum Home-Bildschirm“.</p>
     </div>`;
-  loadStatus();
-  if (Cloud.enabled && Cloud.loggedIn()) loadGroup();
+  return '';
+}
+
+function renderMore(sub) {
+  S.areaDraft = null;
+  const secs = MORE_SECTIONS.filter(s => !s.show || s.show());
+  const sec = secs.find(s => s.id === sub);
+  if (!sec) {
+    view.innerHTML = `<div class="head"><h2>⚙️ Einstellungen & Daten</h2></div>
+      <nav class="more-menu">${secs.map(s => `<a class="more-item" href="#/more/${s.id}">
+        <span class="mi-ico">${s.ico}</span><span class="mi-txt"><b>${s.title}</b><small>${esc(moreSummary(s.id))}</small></span>
+        <span class="mi-go">›</span></a>`).join('')}</nav>`;
+    return;
+  }
+  view.innerHTML = `<div class="head more-head"><a class="more-back" href="#/more">‹ Mehr</a>
+      <h2 class="more-title">${sec.ico} ${sec.title}${sec.id === 'gruppe' && Cloud.group() ? ` „${esc(Cloud.group())}“` : ''}</h2></div>
+    <div class="more-sub">${morePanel(sec.id)}</div>`;
+  if (sec.id === 'daten') loadStatus();
+  if (sec.id === 'gruppe' && Cloud.loggedIn()) loadGroup();
 }
 
 // Version und Zeitpunkt der veröffentlichten App (config.js, von tools/deploy_pages.py geschrieben)
@@ -1235,7 +1281,7 @@ function render() {
   else if (tab === 'favs') renderFavs();
   else if (tab === 'list') renderShop();
   else if (tab === 'all') renderAll();
-  else renderMore();
+  else renderMore(r[1]);
   updateBadges();
 }
 
@@ -1820,8 +1866,8 @@ async function loadGroup() {
   }
   const box = $('#groupAdmin');
   if (!box) return;
-  const h3 = box.closest('.panel').querySelector('h3');
-  if (h3) h3.textContent = `👥 Gruppe „${grpInfo.group}“`;
+  const title = $('.more-title');
+  if (title) title.textContent = `👥 Gruppe „${grpInfo.group}“`;
   // Einladungen für neue Gruppen: nur fest freigeschaltete Mitglieder (members.can_invite)
   const inv = grpInfo.can_invite ? `<div class="grp">
     <p style="margin:0 0 6px"><b>✉️ Einladungen für neue Gruppen</b></p>

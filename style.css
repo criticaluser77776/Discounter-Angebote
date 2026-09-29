@@ -505,3 +505,20 @@ body.no-top #view { padding-top: env(safe-area-inset-top); }
 .route-stop small { color: var(--muted, inherit); font-size: .7rem; text-transform: uppercase; }
 .route-x { border: 0; background: none; padding: 0 2px; cursor: pointer; color: inherit; opacity: .6; }
 .route-arrow { opacity: .5; }
+/* Auswahlfelder in Einstellungen: nie breiter als die Zeile (z.B. Wohnort auf dem Handy) */
+.panel label.line select, .panel label.line input:not([type="checkbox"]) { min-width: 0; max-width: 100%; }
+.panel label.line select { flex: 0 1 auto; text-overflow: ellipsis; }
+/* Mehr: Menü mit Untermenüs */
+.more-menu { display: flex; flex-direction: column; background: var(--surface); border: 1px solid var(--line);
+  border-radius: 12px; overflow: hidden; }
+.more-item { display: flex; align-items: center; gap: 12px; padding: 12px 14px; color: inherit; text-decoration: none;
+  border-top: 1px solid var(--line); }
+.more-item:first-child { border-top: 0; }
+.more-item:active, .more-item:hover { background: var(--accent-soft); }
+.mi-ico { font-size: 1.3rem; width: 1.6em; text-align: center; flex-shrink: 0; }
+.mi-txt { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.mi-txt small { color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mi-go { font-size: 1.4rem; color: var(--muted); }
+.more-head { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; }
+.more-back { color: var(--accent); text-decoration: none; font-weight: 600; font-size: .92rem; padding: 4px 0; }
+.more-sub #areaPanel > h3 { display: none; }
