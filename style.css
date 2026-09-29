@@ -536,3 +536,6 @@ body.wizard #view { padding-bottom: 24px; }
 .intro li { display: flex; gap: 12px; padding: 9px 0; border-top: 1px solid var(--line); }
 .intro li:first-child { border-top: 0; }
 .intro-i { font-size: 1.4rem; width: 1.6em; text-align: center; flex-shrink: 0; }
+/* Auswahl-Chips: umbrechen; Trenner vor den Handelsmarken */
+.chip-sep { flex-basis: 100%; font-size: .75rem; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; margin: 4px 0 -2px 4px; }
+.rows-sep { font-size: .75rem; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; padding: 12px 4px 4px; }

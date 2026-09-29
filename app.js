@@ -623,10 +623,21 @@ function brandCounts(list) {
     e.n++;
     m.set(o.brand_key, e);
   }
-  return [...m.values()].sort((a, b) => b.n - a.n || a.name.localeCompare(b.name));
+  return sortBrands([...m.values()]);
 }
 
-const groupsOf = cat => [...new Set([...(S.groups[cat] || []), OTHER])];
+// Marken: erst Markenprodukte A–Z, dann Handelsmarken (ja!, Gut & Günstig …) A–Z, „Ohne Marke“ zuletzt
+const BRAND_RANK = { marke: 0, eigen: 1 };
+const sortBrands = list => list.sort((a, b) => (BRAND_RANK[a.type] ?? 2) - (BRAND_RANK[b.type] ?? 2) ||
+  a.name.localeCompare(b.name, 'de', { sensitivity: 'base' }));
+
+// Zwischenüberschrift vor der ersten Handelsmarke (nur wenn es davor Markenprodukte gibt)
+const brandSep = (list, i) => list[i].type === 'eigen' && i > 0 && list[i - 1].type !== 'eigen'
+  ? '<span class="chip-sep">Handelsmarken</span>' : '';
+
+// Produktgruppen einer Kategorie A–Z, „Weitere“ zuletzt
+const groupsOf = cat => [...new Set(S.groups[cat] || [])].filter(g => g !== OTHER)
+  .sort((a, b) => a.localeCompare(b, 'de', { sensitivity: 'base' })).concat(OTHER);
 
 /* ---------- Ansichten ---------- */
 
@@ -657,12 +668,12 @@ function renderCategory(cat, group) {
   let list = group ? all.filter(o => o.group === group) : all;
   let h = `<div class="head"><h2>${ICONS[cat] || ''} ${esc(cat)}</h2>
     ${group ? '' : `<a class="btn small" href="#/add/${enc(cat)}">☆ Favoriten wählen</a>`}</div>`;
-  h += `<div class="chips scroll"><a class="chip ${group ? '' : 'on'}" href="#/c/${enc(cat)}">Alle <i>${all.length}</i></a>` +
+  h += `<div class="chips wrap pick"><a class="chip ${group ? '' : 'on'}" href="#/c/${enc(cat)}">Alle <i>${all.length}</i></a>` +
     groups.map(g => `<a class="chip ${g === group ? 'on' : ''}" href="#/c/${enc(cat)}/${enc(g)}">${esc(g)} <i>${gc[g]}</i></a>`).join('') + '</div>';
   if (group) {
     const brands = brandCounts(list);
-    h += `<div class="chips scroll"><button class="chip ${S.brandOnly ? 'on' : ''}" data-act="brandOnly">Nur Markenprodukte</button>` +
-      brands.map(b => `<button class="chip ${S.brands.has(b.key) ? 'on' : ''}" data-act="brand" data-b="${esc(b.key)}">${esc(b.name)} <i>${b.n}</i></button>`).join('') + '</div>';
+    h += `<div class="chips wrap pick"><button class="chip ${S.brandOnly ? 'on' : ''}" data-act="brandOnly">Nur Markenprodukte</button>` +
+      brands.map((b, i) => brandSep(brands, i) + `<button class="chip ${S.brands.has(b.key) ? 'on' : ''}" data-act="brand" data-b="${esc(b.key)}">${esc(b.name)} <i>${b.n}</i></button>`).join('') + '</div>';
     if (S.brandOnly) list = list.filter(o => o.brand_type === 'marke');
     if (S.brands.size) list = list.filter(o => S.brands.has(o.brand_key));
     const ex = findFav({ type: 'group', category: cat, group });
@@ -732,7 +743,8 @@ function renderSearch() {
   const weakN = res.length - strong.length;
   let list = strong.length && !S.showWeak ? strong : res.map(r => r[0]);
   const fc = countBy(list, o => o.category + '\u0001' + o.group);
-  const facets = Object.entries(fc).sort((a, b) => b[1] - a[1]).slice(0, 14);
+  const facets = Object.entries(fc).sort((a, b) => b[1] - a[1]).slice(0, 14)
+    .sort((a, b) => a[0].split('')[1].localeCompare(b[0].split('')[1], 'de'));
   if (S.qFacet && !fc[S.qFacet]) S.qFacet = null;
   if (S.qFacet) list = list.filter(o => o.category + '\u0001' + o.group === S.qFacet);
   // dritte Filterreihe: Marken der (nach Produktgruppe eingegrenzten) Treffer
@@ -744,7 +756,7 @@ function renderSearch() {
     <button class="btn small ${has ? 'on' : ''}" data-act="searchFav" title="merkt Suchbegriff mit gewählter Produktgruppe und Marken">
       ${has ? '★ Gemerkt' : (S.qFacet || S.qBrands.size ? '☆ Suche mit Filtern merken' : '☆ Suche merken')}</button></div>`;
   if (facets.length > 1 || S.qFacet) {
-    h += '<p class="sub">Nach Produktgruppe eingrenzen:</p><div class="chips scroll">' +
+    h += '<p class="sub">Nach Produktgruppe eingrenzen:</p><div class="chips wrap pick">' +
       `<button class="chip ${S.qFacet ? '' : 'on'}" data-act="facet" data-k="">Alle</button>` +
       facets.map(([k, n]) => {
         const [c, g] = k.split('\u0001');
@@ -752,9 +764,9 @@ function renderSearch() {
       }).join('') + '</div>';
   }
   if (brands.length > 1 || S.qBrands.size) {
-    h += '<p class="sub">Nach Marke eingrenzen:</p><div class="chips scroll">' +
+    h += '<p class="sub">Nach Marke eingrenzen:</p><div class="chips wrap pick">' +
       `<button class="chip ${S.qBrands.size ? '' : 'on'}" data-act="qBrand" data-b="">Alle</button>` +
-      brands.map(b => `<button class="chip ${S.qBrands.has(b.key) ? 'on' : ''}" data-act="qBrand" data-b="${esc(b.key)}">${esc(b.name)} <i>${b.n}</i></button>`).join('') +
+      brands.map((b, i) => brandSep(brands, i) + `<button class="chip ${S.qBrands.has(b.key) ? 'on' : ''}" data-act="qBrand" data-b="${esc(b.key)}">${esc(b.name)} <i>${b.n}</i></button>`).join('') +
       '</div>';
   }
   if (fuzzy && res.length) h += '<p class="sub">Keine genauen Treffer – ähnliche Schreibweisen:</p>';
@@ -930,12 +942,13 @@ function pickList(cat, group, live) {
       return items.length ? { ...b, items, forceOpen: true } : null;
     }).filter(Boolean);
   }
-  list.sort((a, b) => b.live - a.live || b.items.length - a.items.length || a.name.localeCompare(b.name));
+  sortBrands(list);
   if (!list.length) return '<p class="empty">Nichts gefunden.</p>';
-  return '<div class="rows">' + list.map(b => {
+  return '<div class="rows">' + list.map((b, i) => {
     const on = d.brands.has(b.key);
+    const sep = brandSep(list, i) ? '<div class="rows-sep">Handelsmarken</div>' : '';
     const open = b.forceOpen || S.pickOpen === b.key;
-    let r = `<div class="row ${on ? 'sel' : ''}">
+    let r = sep + `<div class="row ${on ? 'sel' : ''}">
       <button class="check ${on ? 'on' : ''}" data-act="draftBrand" data-b="${esc(b.key)}">✓</button>
       <div class="t" data-act="pickOpen" data-b="${esc(b.key)}"><b>${esc(b.name)}</b>
         <small>${b.items.length} Produkt${b.items.length > 1 ? 'e' : ''}${b.live ? ` · <span class="live">${b.live} im Angebot</span>` : ''}${b.type === 'eigen' ? ' · Handelsmarke' : ''}</small></div>
