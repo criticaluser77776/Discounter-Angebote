@@ -20,7 +20,7 @@ const Cloud = (() => {
   const ACCESS = 'ap.sb.access';
   const CACHE = 'ap-cloud-v1';
   const TOUCH_MS = 3600e3;  // letzten Besuch höchstens einmal pro Stunde melden
-  let access = null;  // { code, name, gid, group, role, touched }
+  let access = null;  // { code, name, gid, group, role, settings, touched }
   try { access = JSON.parse(localStorage.getItem(ACCESS)); } catch { /* kein Speicher */ }
   // Gerätekennung: bleibt auch nach dem Abmelden (ein entferntes Gerät bleibt so gesperrt)
   let device = '';
@@ -84,7 +84,7 @@ const Cloud = (() => {
     if (!access?.code) return null;
     if (!force && access.gid && Date.now() - (access.touched || 0) < TOUCH_MS) return access;
     const r = await rest('rpc/touch', { method: 'POST', body: { p_name: access.name || '' } });
-    setAccess({ ...access, gid: r.gid, group: r.group, role: r.role, touched: Date.now() });
+    setAccess({ ...access, gid: r.gid, group: r.group, role: r.role, settings: r.settings || {}, touched: Date.now() });
     return access;
   }
 
@@ -102,6 +102,7 @@ const Cloud = (() => {
     code: () => access?.code || '',
     group: () => access?.group || '',
     isAdmin: () => access?.role === 'admin',
+    settings: () => access?.settings || {},  // Gebiet & Händler der Gruppe (vom Admin)
     touch,
     switchedGroup,
     // Code prüfen und merken; Ergebnis: ob er stimmt
@@ -135,6 +136,10 @@ const Cloud = (() => {
       body: { p_id: id, p_action: action, p_name: name ?? null }, prefer: 'return=minimal' }),
     async adminGroupName(name) {
       await rest('rpc/admin_group_name', { method: 'POST', body: { p_name: name }, prefer: 'return=minimal' });
+      await touch(true);
+    },
+    async adminSettings(settings) {
+      await rest('rpc/admin_group_settings', { method: 'POST', body: { p_settings: settings }, prefer: 'return=minimal' });
       await touch(true);
     },
     async adminNewCode() {

@@ -141,10 +141,74 @@ function applyEff() {
   }
 }
 
+/* ---------- Gebiet & Händler (je Gruppe vom Admin, lokal im Server-Modus) ---------- */
+
+const RADII = [5, 10, 15, 20, 30, 0];  // km, 0 = ganzer Großraum
+const grpSet = () => Cloud.enabled ? Cloud.settings() : load('grpSet', {});
+const canEditArea = () => !Cloud.enabled || Cloud.isAdmin();
+
+function kmBetween(a, b) {
+  const r = Math.PI / 180, dLat = (b.lat - a.lat) * r, dLng = (b.lng - a.lng) * r;
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(a.lat * r) * Math.cos(b.lat * r) * Math.sin(dLng / 2) ** 2;
+  return 12742 * Math.asin(Math.sqrt(h));
+}
+
+// Orte im Umkreis (null = alle; ältere Daten ohne Koordinaten: alle)
+function areaPlaces(s) {
+  const home = S.places.find(p => p.key === s.home);
+  if (!home || !s.radius || home.lat == null) return null;
+  return new Set(S.places.filter(p => p.lat != null && kmBetween(home, p) <= s.radius).map(p => p.key));
+}
+
+function applyArea() {
+  const s = grpSet();
+  S.area = areaPlaces(s);
+  const ret = (s.retailers || []).filter(k => S.retailers[k]);
+  S.grpRet = ret.length ? ret : null;
+  if (S.grpRet) S.f.only = S.f.only.filter(k => S.grpRet.includes(k));
+}
+
+// nach dem Melden bei der Gruppe: geänderte Einstellungen (anderer Admin) übernehmen
+function areaChanged(before) {
+  if (JSON.stringify(grpSet()) === before || !S.loaded) return;
+  applyArea();
+  renderChips();
+  updateBadges();
+  rerender();
+}
+
+function areaPanel() {
+  const ed = canEditArea(), dis = ed ? '' : 'disabled';
+  const s = grpSet();
+  const d = S.areaDraft ||= { home: s.home || '', radius: s.radius || 0, retailers: [...(s.retailers || [])] };
+  const inArea = areaPlaces(d);
+  const on = k => !d.retailers.length || d.retailers.includes(k);
+  const count = S.offers.filter(o => on(o.retailer) && (!inArea || !o.places.length || o.places.some(p => inArea.has(p)))).length;
+  const dirty = JSON.stringify(d) !== JSON.stringify({ home: s.home || '', radius: s.radius || 0, retailers: s.retailers || [] });
+  return `<div class="panel" id="areaPanel"><h3>📍 Gebiet & Händler${Cloud.enabled ? ' der Gruppe' : ''}</h3>
+    ${Cloud.enabled ? `<p class="muted" style="margin:0 0 6px;font-size:.85rem">${ed ? 'Gilt für alle in der Gruppe.' : 'Legt der Admin der Gruppe fest.'}</p>` : ''}
+    <label class="line">Wohnort <select data-area="home" ${dis}><option value="">– ohne Umkreis –</option>
+      ${S.places.map(p => `<option value="${p.key}" ${d.home === p.key ? 'selected' : ''}>${esc(p.name)} (${p.zip})</option>`).join('')}</select></label>
+    ${ed ? '<button class="btn small" data-act="areaGeo">📍 Meinen Standort verwenden</button>' : ''}
+    <label class="line">Umkreis <select data-area="radius" ${dis || (d.home ? '' : 'disabled')}>
+      ${RADII.map(r => `<option value="${r}" ${d.radius === r ? 'selected' : ''}>${r ? r + ' km' : 'ganzer Großraum'}</option>`).join('')}</select></label>
+    <p class="muted" style="margin:0 0 8px;font-size:.85rem">${inArea
+      ? `${inArea.size} von ${S.places.length} Orten: ${[...inArea].map(k => esc(S.placeName[k] || k)).join(', ')}`
+      : 'Alle Orte des Großraums (49170 Hagen a.T.W. – 33449 Langenberg)'}</p>
+    <div class="area-rets">${Object.entries(S.retailers).map(([k, r]) =>
+      `<label class="switch"><input type="checkbox" data-area-ret="${k}" ${on(k) ? 'checked' : ''} ${dis}> ${esc(r.name)}</label>`).join('')}</div>
+    <p class="muted" style="margin:8px 0;font-size:.85rem">Damit ${count} von ${S.offers.length} Angeboten. Die Händler-Chips oben filtern zusätzlich innerhalb dieser Auswahl.</p>
+    ${ed ? `<button class="btn small primary" data-act="areaSave" ${dirty ? '' : 'disabled'}>Speichern</button>` : ''}
+  </div>`;
+}
+
+const areaRefresh = () => { const el = $('#areaPanel'); if (el) el.outerHTML = areaPanel(); };
+
 function passes(o) {
   const f = S.f;
   if (f.only.length && !f.only.includes(o.retailer)) return false;
-  if (f.place && o.places.length && !o.places.includes(f.place)) return false;
+  if (S.grpRet && !S.grpRet.includes(o.retailer)) return false;                              // Händler der Gruppe
+  if (S.area && o.places.length && !o.places.some(p => S.area.has(p))) return false;        // Umkreis der Gruppe
   if (f.hideApp && o.app_price && !o.regular_price) return false;
   if (f.hideOnline && o.online_only) return false;
   if (f.onlyCurrent && o.upcoming) return false;
@@ -791,17 +855,17 @@ const START_TABS = [['', 'Kategorien'], ['all', 'Alle'], ['favs', 'Favoriten'], 
 
 function renderMore() {
   const f = S.f;
+  S.areaDraft = null;
   const counts = countBy(S.offers, o => o.retailer);
   view.innerHTML = `<div class="head"><h2>⚙️ Einstellungen & Daten</h2></div>
     <div class="panel"><h3>Filter</h3>
-      <label class="line">Ort <select data-set="place"><option value="">Alle Orte der Strecke</option>
-        ${S.places.map(p => `<option value="${p.key}" ${f.place === p.key ? 'selected' : ''}>${esc(p.name)} (${p.zip})</option>`).join('')}</select></label>
       <label class="line switch"><input type="checkbox" data-set="hideApp" ${f.hideApp ? 'checked' : ''}> App-/Kundenkartenpreise ignorieren (Normalpreis verwenden)</label>
       <label class="line switch"><input type="checkbox" data-set="hideOnline" ${f.hideOnline ? 'checked' : ''}> Nur-online-Angebote ausblenden</label>
       <label class="line switch"><input type="checkbox" data-set="onlyCurrent" ${f.onlyCurrent ? 'checked' : ''}> Nur aktuell gültige (keine Vorschau auf nächste Woche)</label>
       <label class="line switch"><input type="checkbox" data-set="hideNonFood" ${f.hideNonFood ? 'checked' : ''}> Non-Food ausblenden</label>
       <p class="muted" style="margin:6px 0 0;font-size:.85rem">Oben über die farbigen Chips Händler markieren: dann werden nur diese angezeigt, ohne Markierung alle.</p>
     </div>
+    ${areaPanel()}
     <div class="panel"><h3>Darstellung</h3>
       <label class="line">Farbschema <select data-set="theme">
         ${[['auto', 'wie System'], ['light', 'hell'], ['dark', 'dunkel']].map(([k, l]) => `<option value="${k}" ${f.theme === k ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
@@ -1121,7 +1185,9 @@ document.querySelector('.tabs').addEventListener('click', e => {
 });
 
 function renderChips() {
-  $('#retailerChips').innerHTML = Object.entries(S.retailers).map(([k, r]) =>
+  // nur Händler der Gruppe, die im Umkreis Angebote haben
+  const present = new Set(S.offers.filter(o => !S.area || !o.places.length || o.places.some(p => S.area.has(p))).map(o => o.retailer));
+  $('#retailerChips').innerHTML = Object.entries(S.retailers).filter(([k]) => present.has(k) && (!S.grpRet || S.grpRet.includes(k))).map(([k, r]) =>
     `<button class="chip ${S.f.only.includes(k) ? 'sel' : ''}" data-act="rt" data-r="${k}" style="--c:${r.color}"><span class="dot"></span>${esc(r.name)}</button>`
   ).join('');
 }
@@ -1449,6 +1515,22 @@ document.addEventListener('change', e => {
     toast('Name gespeichert');
     return;
   }
+  if (el.dataset.area && S.areaDraft) {
+    S.areaDraft[el.dataset.area] = el.dataset.area === 'radius' ? Number(el.value) : el.value;
+    if (el.dataset.area === 'home' && el.value && !S.areaDraft.radius) S.areaDraft.radius = 10;
+    areaRefresh();
+    return;
+  }
+  if (el.dataset.areaRet && S.areaDraft) {
+    const all = Object.keys(S.retailers);
+    const cur = S.areaDraft.retailers.length ? S.areaDraft.retailers : all;
+    const next = el.checked ? [...new Set([...cur, el.dataset.areaRet])] : cur.filter(k => k !== el.dataset.areaRet);
+    if (!next.length) { el.checked = true; toast('Mindestens ein Händler'); return; }
+    S.areaDraft.retailers = all.filter(k => next.includes(k));
+    if (S.areaDraft.retailers.length === all.length) S.areaDraft.retailers = [];
+    areaRefresh();
+    return;
+  }
   if (el.dataset.set) {
     const k = el.dataset.set;
     S.f[k] = el.type === 'checkbox' ? el.checked : el.value;
@@ -1583,6 +1665,7 @@ async function loadData() {
     S.groups = j.groups;
     S.places = j.places;
     S.placeName = Object.fromEntries(j.places.map(p => [p.key, p.name]));
+    applyArea();
     S.generated = j.generated;
     S.byId = new Map(S.offers.map(o => [o.id, o]));
     S.offers.forEach(prep);
@@ -1612,7 +1695,9 @@ let grpInfo = null;
 async function loadGroup() {
   if (!$('#groupAdmin')) return;
   try {
-    await Cloud.touch(true);  // Rolle und Gruppenname aktuell halten (z.B. nach Übergabe der Admin-Rolle)
+    const before = JSON.stringify(grpSet());
+    await Cloud.touch(true);  // Rolle, Gruppenname und Einstellungen aktuell halten (z.B. nach Übergabe der Admin-Rolle)
+    if (S.loaded && JSON.stringify(grpSet()) !== before) { areaChanged(before); return; }  // zeichnet „Mehr“ neu
     grpInfo = await Cloud.groupInfo();
   } catch (err) {
     const b = $('#groupAdmin');
@@ -1716,6 +1801,33 @@ Object.assign(onClick, {
         : '<p class="muted" style="margin:10px 0 0">Noch keine Einladungen.</p>';
     } catch (err) { toast(`Fehler: ${err.message}`); }
   },
+  areaGeo: () => {
+    if (!navigator.geolocation) { toast('Standort wird nicht unterstützt'); return; }
+    navigator.geolocation.getCurrentPosition(pos => {
+      const me = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+      const near = S.places.filter(p => p.lat != null).map(p => [kmBetween(me, p), p]).sort((a, b) => a[0] - b[0])[0];
+      if (!near || near[0] > 15) { toast('Dein Standort liegt außerhalb des Gebiets (Hagen a.T.W. – Langenberg)'); return; }
+      S.areaDraft.home = near[1].key;
+      if (!S.areaDraft.radius) S.areaDraft.radius = 10;
+      areaRefresh();
+      toast(`Nächster Ort: ${near[1].name} (${near[0].toFixed(1)} km)`);
+    }, () => toast('Standort nicht verfügbar (Freigabe verweigert?)'), { timeout: 10000, maximumAge: 600000 });
+  },
+  areaSave: async () => {
+    const d = S.areaDraft;
+    if (!d) return;
+    const all = Object.keys(S.retailers);
+    const s = { home: d.home, radius: d.home ? d.radius : 0, retailers: d.retailers.length >= all.length ? [] : d.retailers };
+    try {
+      if (Cloud.enabled) await Cloud.adminSettings(s); else save('grpSet', s);
+    } catch (err) { toast(`Fehler: ${err.message}`); return; }
+    S.areaDraft = null;
+    applyArea();
+    renderChips();
+    updateBadges();
+    areaRefresh();
+    toast('Gebiet & Händler gespeichert');
+  },
   loginMode: el => showLogin('', el.dataset.mode),
   loginDone: () => afterLogin(),
 });
@@ -1799,7 +1911,9 @@ function boot() {
     loadData();
     Sync.run();
     // Gerät in der Gruppe melden (letzter Besuch, höchstens stündlich); bisherige Geräte werden so Mitglied
+    const before = JSON.stringify(grpSet());
     if (Cloud.enabled) Cloud.touch().then(() => {
+      areaChanged(before);
       if (Cloud.switchedGroup()) { liResetGroup(); liFavsPush(S.favs); Sync.run(); liRefresh(); }
     }).catch(() => {});
   }

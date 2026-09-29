@@ -97,6 +97,7 @@ main { max-width: 1100px; margin: 0 auto; }
 .btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-text); font-weight: 600; }
 .btn.on { background: var(--amber-soft); border-color: var(--star); }
 .btn.small { padding: 4px 10px; font-size: .82rem; }
+.btn:disabled { opacity: .45; cursor: default; }
 .btn.danger { color: var(--red); }
 
 /* Startseite */
@@ -357,6 +358,9 @@ main { max-width: 1100px; margin: 0 auto; }
 .login .li-f { padding: 6px 0; }
 .login .btn { margin-top: 10px; }
 .login-alt { margin-top: 14px; border-top: 1px solid var(--line); padding-top: 4px; }
+/* Gebiet & Händler (Mehr) */
+.area-rets { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 2px 10px; margin-top: 4px; }
+.area-rets label { display: flex; align-items: center; gap: 6px; padding: 5px 0; }
 /* Gruppe (Mehr → Gruppe, Anmeldung) */
 .grp { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; margin: 4px 0 12px; }
 .grp-code-line { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
