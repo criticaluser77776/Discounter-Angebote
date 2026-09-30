@@ -354,6 +354,9 @@ function dshort(iso) {
   return `${WD[d.getDay()]} ${String(d.getDate()).padStart(2, '0')}.${String(d.getMonth() + 1).padStart(2, '0')}.`;
 }
 
+// Gewicht/Volumen vor Stück, Waschladungen & Co. (z.B. Kapseln: €/kg statt €/Stk, wenn beides vorkommt)
+const unitPref = u => u === 'kg' || u === 'l' ? 0 : 1;
+
 function sortOffers(list, mode = S.sort) {
   const val = o => o.eu ?? Infinity;
   if (mode === 'price') return list.sort((a, b) => a.ep - b.ep);
@@ -361,7 +364,7 @@ function sortOffers(list, mode = S.sort) {
   // Grundpreis: Einheiten nicht vermischen – häufigste Einheit zuerst, innerhalb aufsteigend
   const cnt = {};
   for (const o of list) if (o.eu) cnt[o.unit] = (cnt[o.unit] || 0) + 1;
-  const rank = Object.keys(cnt).sort((a, b) => cnt[b] - cnt[a]);
+  const rank = Object.keys(cnt).sort((a, b) => unitPref(a) - unitPref(b) || cnt[b] - cnt[a]);
   const r = o => o.eu ? rank.indexOf(o.unit) : 99;
   return list.sort((a, b) => r(a) - r(b) || val(a) - val(b) || a.ep - b.ep);
 }
@@ -620,7 +623,7 @@ function card(o, opts = {}) {
     <div class="thumb">${img}</div>
     <div class="info">
       <h3>${onl}${esc(title)}</h3>
-      <div class="meta"><span class="rt" style="--c:${r.color}">${esc(r.name)}${also}</span>${o.size ? `<span class="size">${esc(o.size)}</span>` : ''}${o.description ? `<span class="brand">${esc(o.description)}</span>` : ''}</div>
+      <div class="meta"><span class="rt" style="--c:${r.color}">${esc(r.name)}${also}</span>${o.size ? `<span class="size">${esc(o.size)}</span>` : ''}${o.description && !opts.short ? `<span class="brand">${esc(o.description)}</span>` : ''}</div>
       ${tags.length ? `<div class="tags">${tags.join('')}</div>` : ''}
     </div>
     <div class="side">
@@ -848,7 +851,7 @@ function renderSearch() {
 
 function dominantUnit(list) {
   const c = countBy(list.filter(o => o.eu), o => o.unit);
-  return Object.keys(c).sort((a, b) => c[b] - c[a])[0];
+  return Object.keys(c).sort((a, b) => unitPref(a) - unitPref(b) || c[b] - c[a])[0];
 }
 
 function renderFavs() {
@@ -910,7 +913,7 @@ function renderFavs() {
         <button class="btn small danger" data-act="favDel" data-fid="${f.id}">Löschen</button></div></div>`;
     }
     if (open) {
-      h += offerList(m, { limit: 200, sort: metricSort(f), metric: metricSort(f), isNew });
+      h += offerList(m, { limit: 200, sort: metricSort(f), metric: metricSort(f), isNew, short: true });
       m.forEach(o => seenNow.push(o.key));
     }
     h += '</section>';
@@ -952,7 +955,7 @@ function favRange(f, m) {
   if (!pack) {
     const w = {};
     for (const e of ents) w[e.hist.u] = (w[e.hist.u] || 0) + e.hist.n;
-    u = Object.keys(w).sort((a, b) => w[b] - w[a])[0];
+    u = Object.keys(w).sort((a, b) => unitPref(a) - unitPref(b) || w[b] - w[a])[0];
     if (!u) return null;
   }
   // je Produkt: [Anzahl, Ø, Tiefst, Höchst]; Ausreißer (falsch eingeordnete Produkte, z.B. „Body Butter“ bei Butter)
