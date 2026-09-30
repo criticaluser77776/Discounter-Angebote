@@ -1,6 +1,6 @@
 // Service Worker: App-Gerüst aus dem Cache, API-Daten "network first" mit Offline-Fallback.
 // Pfade relativ zum Ort des Service Workers, damit die App auch unter …github.io/<repo>/ läuft.
-const SHELL = 'shell-v31';
+const SHELL = 'shell-v32';
 const DATA = 'data-v1';
 const BASE = new URL('./', self.location).pathname;
 const SHELL_FILES = ['./', 'index.html', 'app.js', 'cloud.js', 'goods.js', 'brands.js', 'match.js', 'list.js', 'config.js', 'style.css', 'manifest.webmanifest',
@@ -102,7 +102,15 @@ function countNew(ctx, offers) {
 }
 
 self.addEventListener('push', e => {
+  let msg = {};
+  try { msg = e.data?.json() || {}; } catch { /* ohne Inhalt */ }
   e.waitUntil((async () => {
+    if (msg.t === 'test') {  // python -m backend.push --test
+      await self.registration.showNotification('🔔 Test-Benachrichtigung', {
+        tag: 'favs', icon: 'icons/icon-192.png', badge: 'icons/icon-192.png', body: 'Benachrichtigungen funktionieren.',
+        data: { url: BASE + '#/favs' } });
+      return;
+    }
     let n = null;
     const ctx = await pushCtx();
     if (ctx?.cloud?.code && typeof favMatch === 'function') {
