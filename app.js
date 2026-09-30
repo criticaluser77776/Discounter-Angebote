@@ -2592,7 +2592,7 @@ const GUIDE = [
   { id: 'zettel', ico: '📝', title: 'Einkaufszettel',
     intro: 'Euer gemeinsamer Zettel – Änderungen erscheinen sofort bei allen in der Gruppe.',
     items: [
-      ['Eintippen', 'z.B. „3 l Milch“ oder „2 Butter“ – Menge und Einheit werden erkannt. Vorschläge kommen aus Verlauf und Favoriten. Ein „!“ davor (z.B. „!Milch“) = wichtig.'],
+      ['Eintippen', 'z.B. „3 l Milch“ oder „2 Butter“ – Menge und Einheit werden erkannt. Vorschläge kommen aus Verlauf und Favoriten. ❗ vor dem Absenden = wichtig.'],
       ['Wischen', 'nach rechts = abhaken (Rückgängig möglich), nach links = löschen.'],
       ['Antippen', 'öffnet das Mengenfeld (z.B. „2 kg“), ein Tipp ins Feld öffnet die Tastatur. Das ⚙️ daneben öffnet die Bearbeitung: Menge, Notiz, Kategorie, Preis, passende Favoriten und Angebote.'],
       ['🗒️ Notiz', 'hat ein Eintrag eine Notiz, steht 🗒️ hinter dem Namen – antippen zeigt die Notiz darunter, nochmal tippen klappt sie zu.'],

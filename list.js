@@ -103,6 +103,7 @@ const LI = {
   wake: load('li.wake', true),
   doneOpen: false,
   draft: '',
+  prioNext: false,
   noteOpen: new Set(),  // Einträge, deren Notiz aufgeklappt ist (🗒️ antippen)
   histOpen: false, histAll: false, histSort: load('li.histSort', 'last'),  // Schalter ❗ neben der Eingabe: nächster Eintrag wird als wichtig angelegt
   editId: null,
@@ -444,8 +445,20 @@ function liAddFree(name, qty, unit, prio = false) {
 }
 
 function liAddText(text) {
-  const added = liSplit(text).map(p => liParse(p)).filter(p => p.name).map(p => liAddFree(p.name, p.qty, p.unit, p.prio));
+  const prio = liTakePrio();
+  const added = liSplit(text).map(p => liParse(p)).filter(p => p.name).map(p => liAddFree(p.name, p.qty, p.unit, p.prio || prio));
   return added.length;
+}
+
+// Schalter ❗ abfragen und zurücksetzen (gilt für genau eine Eingabe)
+function liTakePrio() {
+  const on = LI.prioNext;
+  if (on) {
+    LI.prioNext = false;
+    const b = $('#liPrioBtn');
+    if (b) { b.classList.remove('on'); b.setAttribute('aria-pressed', 'false'); }
+  }
+  return on;
 }
 
 const offerSnap = o => ({
@@ -651,6 +664,8 @@ function renderShop() {
       <button class="icon-btn li-menu-btn" data-act="liMenu" aria-label="Menü">⋯</button></div>
     <form id="liForm" class="li-form" autocomplete="off">
       <input id="liIn" type="text" enterkeyhint="done" placeholder="Ich brauche …  z.B. 3 l Milch, 1,5 %" value="${esc(LI.draft)}">
+      <button type="button" id="liPrioBtn" class="btn li-prio-btn${LI.prioNext ? ' on' : ''}" data-act="liPrioNext"
+        aria-pressed="${LI.prioNext}" aria-label="Als wichtig hinzufügen" title="Nächsten Eintrag als wichtig hinzufügen">❗</button>
       <button class="btn primary" aria-label="Hinzufügen">＋</button></form>
     <div id="liSug" class="li-sug" hidden></div>
     <div class="li-tools"><span class="li-lbl">Ansicht</span><span class="seg">
@@ -1117,6 +1132,12 @@ Object.assign(onClick, {
     liEditSheet(it);
   },
 
+  liPrioNext: el => {
+    LI.prioNext = !LI.prioNext;
+    el.classList.toggle('on', LI.prioNext);
+    el.setAttribute('aria-pressed', String(LI.prioNext));
+    $('#liIn')?.focus();
+  },
   liSort: el => { LI.sort = el.dataset.s; save('li.sort', LI.sort); save('li.sortV2', true); liBody(); },
   liDoneOpen: () => { LI.doneOpen = !LI.doneOpen; liBody(); },
   liHistOpen: () => { LI.histOpen = !LI.histOpen; liBody(); },
@@ -1125,8 +1146,9 @@ Object.assign(onClick, {
   liHistAdd: el => {
     const x = R.hist.get(el.dataset.hid);
     if (!x) return;
-    if (x.fav) Li.addWish(x.fav, x.name, {});
-    else { liAddFree(x.name, x.qty || null, x.unit || '', false); toast(`＋ „${x.name}“ wieder auf dem Zettel`); }
+    const prio = liTakePrio();
+    if (x.fav) Li.addWish(x.fav, x.name, { prio });
+    else { liAddFree(x.name, x.qty || null, x.unit || '', prio); toast(`＋ „${x.name}“ wieder auf dem Zettel`); }
     liRefresh();
   },
   liMenu: () => liMenuSheet(),
@@ -1149,7 +1171,7 @@ Object.assign(onClick, {
     const parts = liSplit(LI.draft), last = liParse(parts.pop() || '');
     if (parts.length) liAddText(parts.join(' und '));
     if (Li.favWish(f)) toast(`„${favLabel(f).title}“ ist schon auf dem Einkaufszettel`);
-    else Li.addWish(f, favLabel(f).title, { ...last });
+    else Li.addWish(f, favLabel(f).title, { ...last, prio: last.prio || liTakePrio() });
     LI.draft = '';
     const inp = $('#liIn');
     if (inp) { inp.value = ''; inp.blur(); }  // Vorschlag gewählt: Tastatur schließen
@@ -1169,7 +1191,7 @@ Object.assign(onClick, {
   },
   liSugWish: el => {
     const c = el.dataset.c, g = el.dataset.g;
-    Li.addWish({ type: 'group', category: c, group: g, brands: [], brandOnly: false }, g, {});
+    Li.addWish({ type: 'group', category: c, group: g, brands: [], brandOnly: false }, g, { prio: liTakePrio() });
     LI.draft = '';
     const inp = $('#liIn');
     if (inp) { inp.value = ''; inp.blur(); }
