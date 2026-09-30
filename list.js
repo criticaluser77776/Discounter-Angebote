@@ -495,6 +495,19 @@ const Li = {
     this.toggleOffer(o, true);
   },
   openCount: () => liOpen().length,
+  // Zettel-Eintrag durch ein konkretes Angebot ersetzen (Menge, Notiz, „wichtig“ und Kategorie bleiben)
+  replaceWithOffer(id, o) {
+    const it = R.item.get(id);
+    if (!it || !o) return;
+    const before = JSON.parse(JSON.stringify(it));
+    const { fav, ...rest } = it;
+    const name = `${o.brand ? o.brand + ' ' : ''}${o.name || o.title}`;
+    const next = { ...rest, kind: 'offer', name, offer: offerSnap(o), price: null, pm: null };
+    put('item', next);
+    liRemember(next);
+    toast(`„${before.name}“ ersetzt: ${name}`, { label: 'Rückgängig', fn: () => { put('item', before); liRefresh(); } });
+    liRefresh();
+  },
   toggleOffer(o, prio = false) {
     const ex = liOfferItem(o);
     if (ex && prio && !ex.prio) { ex.prio = true; put('item', ex); toast(`❗ ${ex.name} als wichtig markiert`); return; }
@@ -1317,15 +1330,14 @@ function liOffersOf(it) {
   if (it.kind === 'wish') return sortOffers(visible().filter(o => favMatch(it.fav, o)), metricSort(it.fav));
   return liMatches(it.name, catInfo(it.cat).id);
 }
-// langes Drücken auf einen Eintrag: passende Angebote im Fenster (ein einzelnes Angebot direkt als Detailansicht)
+// langes Drücken auf einen Eintrag: passende Angebote als Liste; nach rechts wischen ersetzt den Eintrag durch das Angebot
 function liShowOffers(it) {
   const m = liOffersOf(it);
   if (!m.length) { toast(`Zu „${it.name}“ gerade kein Angebot`); return; }
-  navigator.vibrate?.(15);
-  if (m.length === 1) { openDetail(m[0].id); return; }
   openSheet(`<div class="grab"></div><h2 class="li-sheet-h">Angebote zu „${esc(it.name)}“</h2>
-    <p class="sub" style="margin:0 0 6px">${m.length} Angebot${m.length === 1 ? '' : 'e'} · günstigstes zuerst</p>
+    <p class="sub" style="margin:0 0 6px">${m.length} Angebot${m.length === 1 ? '' : 'e'} · nach rechts wischen: Eintrag durch das Angebot ersetzen</p>
     ${offerList(m, { limit: 40, heads: false, sort: it.kind === 'wish' ? metricSort(it.fav) : S.sort })}`);
+  S.replaceFor = it.id;  // nach openSheet setzen (openSheet/hideSheet setzen es zurück)
 }
 
 // Wischgesten: rechts = abhaken / zurück, links = löschen (mit Rückgängig); langes Drücken = Angebote zeigen

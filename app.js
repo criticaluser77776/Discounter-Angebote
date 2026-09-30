@@ -1394,6 +1394,7 @@ function openSheet(html) {
 }
 function hideSheet() {
   S.sheetOpen = false;
+  S.replaceFor = null;
   S.sheetId = null;
   $('#sheet').hidden = true;
 }
@@ -1472,6 +1473,7 @@ function variantRows(o) {
 async function openDetail(id) {
   const o = S.byId.get(id);
   if (!o) return;
+  S.replaceFor = null;
   S.sheetId = id;
   const r = S.retailers[o.retailer] || { name: o.retailer, color: '#888' };
   const d = disc(o), old = oldPrice(o);
@@ -2025,14 +2027,18 @@ const onClick = {
 let swAddUntil = 0;
 (() => {
   let sw = null;
-  const view = $('#view');
-  view.addEventListener('pointerdown', e => {
-    if (e.button > 0 || route()[0] === 'list' || e.target.closest('button, input, select, a, .fav-drag, .fav-settings')) return;
-    const el = e.target.closest('.card') || e.target.closest('.fav-h')?.closest('.fav');
+  const view = $('#view'), sheet = $('#sheet');
+  const down = e => {
+    const inSheet = !!e.target.closest('#sheet');
+    if (inSheet ? !S.replaceFor : route()[0] === 'list') return;
+    if (e.button > 0 || e.target.closest('button, input, select, a, .fav-drag, .fav-settings')) return;
+    const el = e.target.closest('.card') || (!inSheet && e.target.closest('.fav-h')?.closest('.fav'));
     if (!el) return;
-    sw = { el, x: e.clientX, y: e.clientY, dx: 0, active: false, id: e.pointerId };
-  });
-  view.addEventListener('pointermove', e => {
+    sw = { el, x: e.clientX, y: e.clientY, dx: 0, active: false, id: e.pointerId, repl: inSheet };
+  };
+  view.addEventListener('pointerdown', down);
+  sheet.addEventListener('pointerdown', down);
+  const move = e => {
     if (!sw || e.pointerId !== sw.id) return;
     const dx = e.clientX - sw.x, dy = e.clientY - sw.y;
     if (!sw.active) {
@@ -2043,10 +2049,15 @@ let swAddUntil = 0;
         try { sw.el.setPointerCapture(e.pointerId); } catch { /* egal */ }
         const r = sw.el.getBoundingClientRect();
         sw.hint = document.createElement('div');
-        sw.hint.className = sw.dir > 0 ? 'sw-hint two' : 'sw-hint del';
-        sw.hint.innerHTML = sw.dir > 0 ? '<div class="z">＋ Auf den Zettel</div><div class="w">❗ Wichtig</div>' : '<div class="d">Entfernen 🗑</div>';
+        sw.hint.className = sw.repl ? 'sw-hint repl' : sw.dir > 0 ? 'sw-hint two' : 'sw-hint del';
+        sw.hint.innerHTML = sw.repl ? '<div class="d">⇄ Eintrag ersetzen</div>'
+          : sw.dir > 0 ? '<div class="z">＋ Auf den Zettel</div><div class="w">❗ Wichtig</div>' : '<div class="d">Entfernen 🗑</div>';
         sw.rect = r;
-        Object.assign(sw.hint.style, { top: r.top + window.scrollY + 'px', left: r.left + window.scrollX + 'px', width: r.width + 'px', height: r.height + 'px' });
+        // im Fenster fest positioniert und über dem Fenster
+        Object.assign(sw.hint.style, sw.repl
+          ? { position: 'fixed', zIndex: 51, top: r.top + 'px', left: r.left + 'px', width: r.width + 'px', height: r.height + 'px' }
+          : { top: r.top + window.scrollY + 'px', left: r.left + window.scrollX + 'px', width: r.width + 'px', height: r.height + 'px' });
+        if (sw.repl) sw.el.style.zIndex = 52;
         document.body.appendChild(sw.hint);
         sw.el.classList.add('sw-moving');
       } else if (Math.abs(dy) > 12 || dx < -12) { sw = null; return; } else return;
@@ -2063,7 +2074,7 @@ let swAddUntil = 0;
       z.classList.toggle('act', mine);
       z.classList.toggle('on', goNow && mine);
     }
-  });
+  };
   const end = () => {
     if (!sw) return;
     const s = sw;
@@ -2073,8 +2084,13 @@ let swAddUntil = 0;
     const go = Math.abs(s.dx) > Math.min(110, s.el.offsetWidth * 0.3);
     s.el.style.transition = 'transform .15s';
     s.el.style.transform = '';
-    setTimeout(() => { s.el.style.transition = ''; s.el.classList.remove('sw-moving'); s.hint.remove(); }, 160);
+    setTimeout(() => { s.el.style.transition = ''; s.el.style.zIndex = ''; s.el.classList.remove('sw-moving'); s.hint.remove(); }, 160);
     if (!go) return;
+    if (s.repl) {  // Fenster „Angebote zu …“ auf dem Zettel: Eintrag durch dieses Angebot ersetzen
+      const id = S.replaceFor;
+      setTimeout(() => { closeSheet(); Li.replaceWithOffer(id, S.byId.get(s.el.dataset.id)); }, 170);
+      return;
+    }
     if (s.dir < 0) {  // Favorit entfernen – Rückfrage erst, wenn die Zeile zurückgefedert ist
       setTimeout(() => onClick.favDel(s.el), 170);
       return;
@@ -2095,8 +2111,9 @@ let swAddUntil = 0;
     }
     setTimeout(rerender, 170);
   };
-  view.addEventListener('pointerup', end);
-  view.addEventListener('pointercancel', end);
+  view.addEventListener('pointermove', move);
+  sheet.addEventListener('pointermove', move);
+  for (const el of [view, sheet]) { el.addEventListener('pointerup', end); el.addEventListener('pointercancel', end); }
 })();
 
 document.addEventListener('click', e => {

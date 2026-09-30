@@ -652,3 +652,5 @@ details.mk summary .muted { font-size: .85rem; margin-left: auto; }
 /* Zettel: langes Drücken zeigt Angebote – keine Textauswahl/Callout dabei */
 .li-row .li-fg { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
 .li-sheet-h { margin: 4px 0 2px; padding: 0 16px; font-size: 1.1rem; }
+.sw-hint.repl { background: color-mix(in srgb, var(--accent) 35%, var(--surface)); }
+.sw-hint.repl.go { background: var(--accent); color: var(--accent-text); }
