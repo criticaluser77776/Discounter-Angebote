@@ -1097,7 +1097,6 @@ const MORE_SECTIONS = [
   { id: 'darstellung', ico: '🎨', title: 'Darstellung' },
   { id: 'daten', ico: '📊', title: 'Daten & Abruf' },
   { id: 'feedback', ico: '💬', title: 'Feedback', show: () => Cloud.enabled },
-  { id: 'hilfe', ico: '📖', title: 'Anleitung' },
   { id: 'info', ico: 'ℹ️', title: 'Über die App' },
 ];
 const FB_KINDS = [['bug', '🐞 Fehler'], ['idee', '💡 Idee'], ['sonstiges', '💬 Sonstiges']];
@@ -1133,8 +1132,7 @@ function moreSummary(id) {
   if (id === 'darstellung') return `${(THEMES.find(x => x[0] === f.theme) || THEMES[0])[1]} · Start: ${(START_TABS.find(x => x[0] === (f.startTab || '')) || START_TABS[0])[1]}`;
   if (id === 'daten') return `${S.offers.length} Angebote · Stand ${S.generated ? new Date(S.generated).toLocaleString('de-DE', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '–'}`;
   if (id === 'feedback') return 'Fehler melden, Ideen und Wünsche';
-  if (id === 'hilfe') return 'Alle Funktionen je Reiter, Begriffe & Symbole';
-  if (id === 'info') return `Kurzanleitung · ${window.APP_VERSION ? 'Version ' + window.APP_VERSION.number : 'Installieren'}`;
+  if (id === 'info') return `Anleitung je Reiter · ${window.APP_VERSION ? 'Version ' + window.APP_VERSION.number : 'Installieren'}`;
   return '';
 }
 
@@ -1239,11 +1237,9 @@ function morePanel(id) {
       <div style="display:flex;justify-content:flex-end;margin-top:8px"><button class="btn primary" data-act="fbSend">Senden</button></div>
     </div>`;
   }
-  if (id === 'hilfe') return `<div class="panel"><p class="muted" style="margin:0 0 8px">Abschnitt antippen zum Aufklappen.</p>${guideHtml()}
-      <button class="btn small" data-act="wizShow" style="margin-top:10px">Einführung noch einmal ansehen</button></div>`;
-  if (id === 'info') return `<div class="panel"><h3>Kurzanleitung</h3>${introHtml()}
-      <a class="btn small" href="#/more/hilfe">📖 Ausführliche Anleitung</a>
-      <button class="btn small" data-act="wizShow">Einführung noch einmal ansehen</button></div>
+  if (id === 'info') return `<div class="panel"><h3>📖 Anleitung</h3>
+      <p class="muted" style="margin:0 0 8px">Abschnitt antippen zum Aufklappen.</p>${guideHtml()}
+      <button class="btn small" data-act="wizShow" style="margin-top:10px">Einführung noch einmal ansehen</button></div>
     <div class="panel"><h3>Version</h3>${appVersionLine()}</div>
     <div class="panel"><h3>Als App installieren</h3>
       <p class="muted" style="margin:0;font-size:.88rem">Android/Chrome: Menü ⋮ → „App installieren“.
@@ -2543,7 +2539,7 @@ function wizardStart() {
   return { step: 0, steps };
 }
 
-/* ---------- Anleitung (Mehr → Anleitung) und Einführung beim ersten Start ---------- */
+/* ---------- Anleitung (Mehr → Über die App) und Einführung beim ersten Start ---------- */
 
 // Abschnitte je Reiter: [Symbol, Titel, Einleitung, [[Stichwort, Erklärung], …]]; tour = Kurzfassung für die Einführung
 const GUIDE = [
@@ -2637,7 +2633,7 @@ const TOUR = [
     text: 'Einfach eintippen, z.B. „3 l Milch“. Der Zettel ist für alle in der Gruppe derselbe.',
     points: ['<b>Rechts wischen</b> = abhaken, <b>links wischen</b> = löschen, <b>antippen</b> = bearbeiten.',
       'In der Ansicht „Details“: <b>💡 im Angebot</b> und <b>lange drücken</b> zeigt die passenden Angebote – nach rechts wischen ersetzt den Eintrag.',
-      'Alles Weitere: <b>Mehr → Anleitung</b>.'] },
+      'Alles Weitere: <b>Mehr → Über die App</b>.'] },
 ];
 const tourHtml = t => `<h2>${t.ico} ${t.title}</h2><p>${t.text}</p>
   ${t.demo ? `<div class="tour-demo"><div class="td-z">＋ Auf den Zettel</div><div class="td-w">❗ Wichtig</div>
@@ -2662,7 +2658,7 @@ function renderWizard() {
       <p>Die App vergleicht die Wochenangebote der Discounter und Supermärkte in eurer Gegend nach Grundpreis –
         und führt euren gemeinsamen Einkaufszettel.</p>
       <p class="muted">Erst ein, zwei Einstellungen, dann ein kurzer Rundgang (${TOUR.length} Seiten). Alles lässt sich später unter „Mehr“ ändern,
-        die ausführliche Anleitung steht unter Mehr → Anleitung.</p>`,
+        die ausführliche Anleitung steht unter Mehr → Über die App.</p>`,
     area: () => `<h2>📍 Gebiet & Händler</h2>
       <p class="muted">Wo kauft ihr ein? Wohnort mit Umkreis, optional eine Strecke (z.B. Arbeitsweg) und die Händler.</p>${areaPanel()}`,
     start: () => `<h2>🏁 Start-Tab</h2><p class="muted">Was soll beim Öffnen der App erscheinen?</p>
