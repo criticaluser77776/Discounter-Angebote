@@ -645,7 +645,7 @@ function liRow(it, best) {
 function liNoteHtml(it) {
   const open = LI.noteOpen.has(it.id);
   return `<button class="li-note-ico${open ? ' on' : ''}" data-act="liNote" data-lid="${it.id}" aria-label="Notiz ${open ? 'zuklappen' : 'anzeigen'}" aria-expanded="${open}">🗒️</button>` +
-    (open ? `<span class="li-note">${esc(it.note)}</span>` : '');
+    (open ? `<span class="li-note"><span class="li-note-t">${esc(it.note)}</span><button class="li-note-del" data-act="liNoteDel" data-lid="${it.id}" aria-label="Notiz löschen">🗑</button></span>` : '');
 }
 
 // Mengenfeld: „2,5 kg“, „3“, „3x“, „2 Pck“ → Menge + Einheit (bekannte Einheiten vereinheitlicht)
@@ -1091,6 +1091,17 @@ Object.assign(onClick, {
     if (swiped()) return;
     const id = el.dataset.lid;
     if (!LI.noteOpen.delete(id)) LI.noteOpen.add(id);
+    liRefresh();
+  },
+  liNoteDel: el => {
+    if (swiped()) return;
+    const it = liById(el);
+    if (!it?.note) return;
+    const old = it.note;
+    it.note = '';
+    put('item', it);
+    LI.noteOpen.delete(it.id);
+    toast('Notiz gelöscht', { label: 'Rückgängig', fn: () => { it.note = old; put('item', it); LI.noteOpen.add(it.id); liRefresh(); } });
     liRefresh();
   },
   liEdit: el => {
