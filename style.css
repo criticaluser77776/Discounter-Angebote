@@ -633,3 +633,4 @@ details.mk summary .muted { font-size: .85rem; margin-left: auto; }
 .btn.act-fav { border-color: var(--star); color: var(--amber); background: color-mix(in srgb, var(--star) 12%, var(--surface)); }
 .btn.act-fav.on { background: var(--star); border-color: var(--star); color: #1b1300; }
 .btn.act-list { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+.chip.faved::after { content: "★"; color: var(--star); margin-left: 2px; }

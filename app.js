@@ -471,6 +471,17 @@ function brandNamesOf(keys, source) {
 }
 
 // Gruppenfavorit anlegen/aktualisieren/entfernen (eine Auswahl je Gruppe)
+// „☆ Gruppe merken“ / „＋ Zettel“ – gleiche Knöpfe in Kategorien und bei Favoriten → hinzufügen
+function groupActions(cat, group, brands, brandOnly, acts = ['groupFav', 'groupWish']) {
+  const ex = findFav({ type: 'group', category: cat, group: group || null });
+  const same = ex && JSON.stringify(ex.brands || []) === JSON.stringify([...brands].sort()) && !!ex.brandOnly === !!brandOnly;
+  const what = group ? 'Gruppe' : 'Kategorie';
+  const label = ex ? (same ? '★ Gemerkt' : '★ Auswahl übernehmen') : (brands.size ? '☆ Auswahl merken' : `☆ ${what} merken`);
+  return `<div class="chips wrap grp-acts">
+      <button class="btn act-fav ${ex ? 'on' : ''}" data-act="${acts[0]}" data-c="${esc(cat)}" data-g="${esc(group || '')}">${label}</button>
+      <button class="btn act-list" data-act="${acts[1]}" data-c="${esc(cat)}" data-g="${esc(group || '')}">＋ Zettel</button></div>`;
+}
+
 function saveGroupFav(cat, group, brands, brandOnly, source) {
   const base = { type: 'group', category: cat, group: group || null };
   const ex = findFav(base);
@@ -739,13 +750,7 @@ function renderCategory(cat, group) {
       brands.map(b => `<button class="chip ${S.brands.has(b.key) ? 'on' : ''}" data-act="brand" data-b="${esc(b.key)}">${esc(b.name)} <i>${b.n}</i></button>`).join('') + '</div>';
     if (S.brandOnly) list = list.filter(o => o.brand_type === 'marke');
     if (S.brands.size) list = list.filter(o => brandHit({ brands: [...S.brands] }, o));  // wie beim Favoriten (auch Titel)
-    const ex = findFav({ type: 'group', category: cat, group });
-    const same = ex && JSON.stringify(ex.brands || []) === JSON.stringify([...S.brands].sort()) && !!ex.brandOnly === S.brandOnly;
-    const label = ex ? (same ? '★ Gemerkt' : '★ Auswahl übernehmen') : (S.brands.size ? '☆ Auswahl merken' : '☆ Gruppe merken');
-    h += `<div class="chips wrap grp-acts">
-      <button class="btn act-fav ${ex ? 'on' : ''}" data-act="groupFav" data-c="${esc(cat)}" data-g="${esc(group)}">${label}</button>
-      <button class="btn act-list" data-act="groupWish" data-c="${esc(cat)}" data-g="${esc(group)}">＋ Zettel</button>
-      <a class="btn" href="#/add/${enc(cat)}/${enc(group)}">Marken & Produkte ›</a></div>`;
+    h += groupActions(cat, group, S.brands, S.brandOnly);
   }
   h += sortbar(list.length) + offerList(sortOffers(list), { heads: false });  // Kategorien: ohne Zwischenüberschriften je Einheit
   view.innerHTML = h;
@@ -1015,35 +1020,21 @@ async function renderPicker(cat, group) {
       Der Katalog enthält alle bisher gesehenen Produkte, auch wenn sie gerade nicht im Angebot sind.</p>
       <div class="grid">${S.categories.filter(c => cnt[c]).map(c =>
       `<a class="tile" href="#/add/${enc(c)}"><span class="ico">${ICONS[c] || '📦'}</span><span class="nm">${esc(c)}</span><span class="ct">${cnt[c]} Produkte</span></a>`).join('')}</div>`;
-  } else if (!group) {
+  } else {
+    // gleiche Auswahl wie unter Kategorien: Produktgruppen-Chips, darunter Marken-Chips und die Knöpfe
     const entries = S.catalog.filter(e => e.category === cat);
     const gc = countBy(entries, e => e.group);
-    const lc = countBy(entries.filter(e => live.has(e.product_key)), e => e.group);
-    const whole = findFav({ type: 'group', category: cat, group: null });
-    h = `<div class="head"><h2>${ICONS[cat] || ''} ${esc(cat)}</h2></div>
-      <p class="sub">Haken = ganze Produktgruppe merken. Pfeil = Marken und Produkte auswählen.</p>
-      <div class="rows"><div class="row ${whole ? 'sel' : ''}">
-        <button class="check ${whole ? 'on' : ''}" data-act="pickGroup" data-c="${esc(cat)}" data-g="">✓</button>
-        <div class="t"><b>Ganze Kategorie</b><small>alle ${entries.length} Produkte</small></div></div>` +
-      groupsOf(cat).filter(g => gc[g]).map(g => {
-        const f = findFav({ type: 'group', category: cat, group: g });
-        const sel = f ? (f.brands?.length ? `${f.brands.length} Marke${f.brands.length > 1 ? 'n' : ''} gewählt` : 'alle Marken') : '';
-        return `<div class="row ${f ? 'sel' : ''}">
-          <button class="check ${f ? 'on' : ''}" data-act="pickGroup" data-c="${esc(cat)}" data-g="${esc(g)}">✓</button>
-          <a class="t" href="#/add/${enc(cat)}/${enc(g)}"><b>${esc(g)}</b>
-            <small>${gc[g]} Produkte${lc[g] ? ` · <span class="live">${lc[g]} im Angebot</span>` : ''}${sel ? ' · ★ ' + sel : ''}</small></a>
-          <a class="chev" href="#/add/${enc(cat)}/${enc(g)}">›</a></div>`;
-      }).join('') + '</div>';
-  } else {
-    const d = draftFor(cat, group);
-    h = `<div class="head"><h2>${esc(group)}</h2><a class="btn small" href="#/c/${enc(cat)}/${enc(group)}" data-act="pickView">Angebote ansehen</a></div>
-      <p class="sub">${esc(cat)} · Marken antippen (keine Auswahl = alle Marken).</p>
-      <div class="chips wrap"><label class="switch"><input type="checkbox" data-field="draftBrandOnly" ${d.brandOnly ? 'checked' : ''}> Nur Markenprodukte (ohne Handelsmarken)</label></div>
-      <input id="pickQ" class="filter-input" type="search" placeholder="Marke filtern …" value="${esc(S.pickQ)}">
-      <div id="pickList">${pickList(cat, group, live)}</div>
-      <div class="savebar"><span id="draftInfo">${draftInfo(d)}</span>
-        <span style="display:flex;gap:8px">${d.exists ? '<button class="btn danger" data-act="draftDel">Entfernen</button>' : ''}
-        <button class="btn primary" data-act="draftSave">${d.exists ? 'Aktualisieren' : 'Gruppe merken'}</button></span></div>`;
+    const d = group ? draftFor(cat, group) : null;
+    h = `<div class="head"><h2>${ICONS[cat] || ''} ${esc(cat)}</h2>
+      ${group ? `<a class="btn small" href="#/c/${enc(cat)}/${enc(group)}" data-act="pickView">Angebote ansehen</a>` : ''}</div>
+      <p class="sub">Favorit wählen: Produktgruppe antippen, dann Marken markieren (keine Auswahl = alle Marken).</p>`;
+    h += `<div class="chips wrap pick"><a class="chip ${group ? '' : 'on'}" href="#/add/${enc(cat)}">Alle <i>${entries.length}</i></a>` +
+      groupsOf(cat).filter(g => gc[g]).map(g => `<a class="chip ${g === group ? 'on' : ''} ${findFav({ type: 'group', category: cat, group: g }) ? 'faved' : ''}"
+        href="#/add/${enc(cat)}${g === group ? '' : '/' + enc(g)}">${esc(g)} <i>${gc[g]}</i></a>`).join('') + '</div>';
+    if (group) h += `<div class="chips-sep"><span>Marken</span></div><div id="pickList">${pickList(cat, group, live)}</div>`;
+    h += `<div id="pickActs">${group ? groupActions(cat, group, d.brands, d.brandOnly, ['pickFav', 'pickWish'])
+      : groupActions(cat, null, new Set(), false, ['pickFav', 'pickWish'])}</div>`;
+    if (group) h += `<p class="sub" id="draftInfo">${draftInfo(d)}</p>`;
   }
   view.innerHTML = h;
 }
@@ -1073,10 +1064,9 @@ function pickList(cat, group, live) {
   let list = [...brands.values()];
   if (q) list = list.filter(b => norm(b.name).includes(q) || b.items.some(e => norm(e.name).includes(q)));
   sortBrands(list);
-  if (!list.length) return '<p class="empty">Nichts gefunden.</p>';
-  // kleine Chips zum Markieren (wie in der Kategorie-Ansicht), Handelsmarken mit Zwischenüberschrift
-  return '<div class="chips wrap pick">' + list.map(b =>
-    `<button class="chip ${d.brands.has(b.key) ? 'on' : ''}" data-act="draftBrand" data-b="${esc(b.key)}">${esc(b.name)}</button>`).join('') + '</div>';
+  // kleine Chips zum Markieren wie in der Kategorie-Ansicht (Zahl = aktuelle Angebote)
+  return `<div class="chips wrap pick"><button class="chip ${d.brandOnly ? 'on' : ''}" data-act="draftBrandOnly">Nur Markenprodukte</button>` +
+    list.map(b => `<button class="chip ${d.brands.has(b.key) ? 'on' : ''}" data-act="draftBrand" data-b="${esc(b.key)}">${esc(b.name)}${b.live ? ` <i>${b.live}</i>` : ''}</button>`).join('') + '</div>';
 }
 
 const catalogProductFav = e => ({
@@ -1089,6 +1079,7 @@ function updatePicker() {
   const live = new Set(visible().map(o => o.product_key));
   $('#pickList').innerHTML = pickList(cat, group, live);
   $('#draftInfo').innerHTML = draftInfo(S.draft);
+  $('#pickActs').innerHTML = groupActions(cat, group, S.draft.brands, S.draft.brandOnly, ['pickFav', 'pickWish']);
 }
 
 // Tab beim Öffnen der App (Einstellung pro Gerät); 'last' = zuletzt genutzter Tab
@@ -1838,6 +1829,20 @@ const onClick = {
     if (S.draft) S.carry = { brands: new Set(S.draft.brands), brandOnly: !!S.draft.brandOnly };
     nav(el.getAttribute('href'));
   },
+  pickFav: el => {
+    const cat = el.dataset.c, g = el.dataset.g || null, d = g ? S.draft : null;
+    saveGroupFav(cat, g, d ? d.brands : new Set(), d?.brandOnly, [...S.offers, ...(S.catalog || [])]);
+    if (d) d.exists = !!findFav({ type: 'group', category: cat, group: g });
+    rerender();
+  },
+  pickWish: el => {
+    const cat = el.dataset.c, g = el.dataset.g || null, d = g ? S.draft : null;
+    const brands = d ? [...d.brands] : [];
+    const names = brandNamesOf(brands, [...S.offers, ...(S.catalog || [])]);
+    const label = `${!g || g === OTHER ? cat : g}${brands.length ? ' (' + brands.map(k => names[k]).join(', ') + ')' : ''}`;
+    Li.addWish({ type: 'group', category: cat, group: g, brands, brandOnly: !!d?.brandOnly }, label);
+  },
+  draftBrandOnly: () => { S.draft.brandOnly = !S.draft.brandOnly; updatePicker(); },
   pickOpen: el => { S.pickOpen = S.pickOpen === el.dataset.b ? null : el.dataset.b; updatePicker(); },
   draftBrand: el => {
     const k = el.dataset.b;
