@@ -599,3 +599,15 @@ body.wizard #view { padding-bottom: 24px; }
 .fav-h .t b, .fav-h .t small { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .fav-h .t b .new, .zl { white-space: nowrap; }
 .sw-hint.two { align-items: stretch; justify-items: stretch; }
+
+/* v60: Wisch-Zonen sofort sichtbar, Trennlinie; kein seitlicher Überlauf beim Wischen */
+html, body, #view { overflow-x: clip; }
+.sw-hint.two { gap: 2px; background: var(--line); }
+.sw-hint.two > div { opacity: .55; transition: opacity .1s, background .1s; }
+.sw-hint.two > .act { opacity: 1; }
+.sw-hint.two > .z.act:not(.on) { background: color-mix(in srgb, var(--accent) 45%, var(--surface)); }
+.sw-hint.two > .w.act:not(.on) { background: color-mix(in srgb, var(--star) 50%, var(--surface)); }
+.sw-hint.two.go { background: var(--line); }
+/* schon auf dem Zettel */
+.onlist { color: var(--accent); font-weight: 800; }
+.onlist.prio { color: var(--red); }

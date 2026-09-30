@@ -541,6 +541,7 @@ function markSeen(ids) {
 /* ---------- Einkaufszettel: siehe list.js (Li.hasOffer, Li.toggleOffer, Li.addWish) ---------- */
 
 const inList = o => Li.hasOffer(o);
+const onListMark = prio => `<span class="onlist${prio ? ' prio' : ''}" title="${prio ? 'Wichtig auf' : 'Auf'} dem Zettel">${prio ? '❗' : '✓'}</span> `;
 
 /* ---------- Bausteine ---------- */
 
@@ -580,8 +581,8 @@ function card(o, opts = {}) {
   if (o.upcoming) tags.push(`<span class="tag blue">ab ${dshort(o.valid_from)}</span>`);
   else if (o.valid_to) tags.push(`<span class="tag">bis ${dshort(o.valid_to)}</span>`);
   if (o.markets?.length > 1) tags.push(`<span class="tag">${o.markets.length} Märkte</span>`);
-  // Zettel-Status (früher an den Knöpfen ＋/❗ erkennbar; hinzufügen jetzt per Wischen)
-  if (inList(o)) tags.unshift(`<span class="tag zl">${Li.isPrioOffer(o) ? '❗' : '✓'} Zettel</span>`);
+  // Zettel-Status als kleiner Haken vor dem Titel (hinzufügen per Wischen)
+  const onl = inList(o) ? onListMark(Li.isPrioOffer(o)) : '';
   const name = o.name || o.title;
   const title = o.brand && !norm(name).includes(norm(o.brand)) ? `${o.brand} ${name}` : name;
   const img = o.image
@@ -592,7 +593,7 @@ function card(o, opts = {}) {
   return `<article class="card" data-act="open" data-id="${esc(o.id)}">
     <div class="thumb">${img}</div>
     <div class="info">
-      <h3>${esc(title)}</h3>
+      <h3>${onl}${esc(title)}</h3>
       <div class="meta"><span class="rt" style="--c:${r.color}">${esc(r.name)}</span>${o.description ? `<span class="brand">${esc(o.description)}</span>` : ''}</div>
       ${tags.length ? `<div class="tags">${tags.join('')}</div>` : ''}
     </div>
@@ -859,9 +860,7 @@ function renderFavs() {
   // die per Griff ⠿ verschiebbar ist
   const own = S.favSort === 'own';
   // Katalog (mit Preisspannen) für die Preis-Leisten nachladen
-  if (!S.catalog && !S.catLoading) {
-    S.catLoading = loadCatalog().then(() => { if (route()[0] === 'favs') rerender(); }).catch(() => {}).finally(() => { S.catLoading = null; });
-  }
+  prefetchCatalog();
   const rows = favRows(vis);
   if (!own) rows.sort((a, b) => (b.m.length > 0) - (a.m.length > 0));
   h += `<div class="sortbar"><span>${S.favs.length} Favorit${S.favs.length === 1 ? '' : 'en'}${own ? ' · zum Verschieben ⠿ ziehen' : ''}</span>
@@ -882,8 +881,8 @@ function renderFavs() {
     h += `<section class="fav" data-fid="${f.id}"><div class="fav-h" data-act="favOpen" data-fid="${f.id}">
       ${own ? '<span class="fav-drag" aria-label="Verschieben" title="Zum Verschieben ziehen">⠿</span>' : ''}
       <span style="font-size:22px">${L.icon}</span>
-      <div class="t"><b>${esc(L.title)}${fresh ? ` <span class="new">${fresh} neu</span>` : ''}</b>
-        <small>${esc(L.sub)}${pack ? ' · Packungspreis' : ''}${f.max ? ` · ${esc(maxLabel(f))}` : ''} · ${m.length ? `${m.length} Angebot${m.length === 1 ? '' : 'e'}` : 'kein Angebot'}${wish ? ` · <span class="zl">${wish.prio ? '❗' : '✓'} Zettel</span>` : ''}</small></div>
+      <div class="t"><b>${wish ? onListMark(wish.prio) : ''}${esc(L.title)}${fresh ? ` <span class="new">${fresh} neu</span>` : ''}</b>
+        <small>${esc(L.sub)}${pack ? ' · Packungspreis' : ''}${f.max ? ` · ${esc(maxLabel(f))}` : ''} · ${m.length ? `${m.length} Angebot${m.length === 1 ? '' : 'e'}` : 'kein Angebot'}</small></div>
       <div class="fav-r">${best ? `<span class="fav-best${best.ea ? ' is-app' : ''}">ab ${best.ea ? '📱 ' : ''}${esc(pack ? `${fmt(best.ep)} €` : priceLine(best))}</span>
           <span class="fav-rt">${esc(rname(best))}</span>` : ''}</div>
       <button class="fav-more ${settings ? 'on' : ''}" data-act="favSettings" data-fid="${f.id}" aria-label="Einstellungen">⋮</button></div>${priceBar(favRange(f, m))}`;
@@ -920,6 +919,11 @@ function renderFavs() {
 
 async function loadCatalog() {
   S.catalog = await DATA.catalog();
+}
+// Katalog gleich nach den Angeboten im Hintergrund laden, damit die Preis-Leisten in Favoriten sofort da sind
+function prefetchCatalog() {
+  if (S.catalog || S.catLoading) return;
+  S.catLoading = loadCatalog().then(() => { if (route()[0] === 'favs') rerender(); }).catch(() => {}).finally(() => { S.catLoading = null; });
 }
 
 /* ---------- Preis-Leiste: Tiefst-, Durchschnitts-, Höchstpreis der letzten 12 Monate ---------- */
@@ -1832,8 +1836,13 @@ let swAddUntil = 0;
     const goNow = Math.abs(sw.dx) > Math.min(110, sw.el.offsetWidth * 0.3);
     sw.lower = e.clientY > sw.rect.top + sw.rect.height / 2;  // untere Hälfte = wichtig
     sw.hint.classList.toggle('go', goNow);
-    sw.hint.querySelector('.z')?.classList.toggle('on', goNow && !sw.lower);
-    sw.hint.querySelector('.w')?.classList.toggle('on', goNow && sw.lower);
+    // Zone unter dem Finger sofort zeigen (act), ab Schwelle voll gefärbt (on)
+    for (const [sel, mine] of [['.z', !sw.lower], ['.w', sw.lower]]) {
+      const z = sw.hint.querySelector(sel);
+      if (!z) continue;
+      z.classList.toggle('act', mine);
+      z.classList.toggle('on', goNow && mine);
+    }
   });
   const end = () => {
     if (!sw) return;
@@ -2060,6 +2069,7 @@ async function loadData() {
     S.loaded = true;
     renderChips();
     render();
+    prefetchCatalog();
   } catch (err) {
     if (err instanceof LoginNeeded) { showLogin(err.message); return; }
     view.innerHTML = `<p class="empty">Angebote konnten nicht geladen werden.<br><small>${esc(err.message)}</small><br><br>
