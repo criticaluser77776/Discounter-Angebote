@@ -397,9 +397,10 @@ function favSig(f) {
 function searchFavNow() {
   const f = { type: 'search', q: S.q };
   if (S.qFacet) [f.category, f.group] = S.qFacet.split('\u0001');
+  if (!f.group) delete f.group;
   if (S.qBrands.size) {
     f.brands = [...S.qBrands].sort();
-    f.brandNames = brandNamesOf(f.brands, S.offers);
+    f.brandNames = brandNamesOf(f.brands, [...S.offers, ...(S.catalog || [])]);
   }
   return f;
 }
@@ -766,19 +767,21 @@ function renderAll() {
   const disc = o => (o.discount > 0 && o.discount < 100 ? o.discount : 0);
   const byName = (a, b) => (a.name || '').localeCompare(b.name || '', 'de');
   // „Top-Angebote“: nur ab 30 % Rabatt, nach Rabatt sortiert (ohne Kategorie-Gliederung)
+  // Suche im Reiter „Alle“: filtert nur die angezeigten Bereiche und Angebote
+  const base = S.q ? searchHits(S.q) : visible();
   const list = S.allTop
-    ? visible().filter(o => disc(o) >= 30).sort((a, b) => disc(b) - disc(a) || byName(a, b))
-    : visible().sort((a, b) => (rank.get(a.category) ?? 999) - (rank.get(b.category) ?? 999) || disc(b) - disc(a) || byName(a, b));
+    ? base.filter(o => disc(o) >= 30).sort((a, b) => disc(b) - disc(a) || byName(a, b))
+    : base.slice().sort((a, b) => (rank.get(a.category) ?? 999) - (rank.get(b.category) ?? 999) || disc(b) - disc(a) || byName(a, b));
   const sel = S.f.only.map(k => S.retailers[k]?.name || k);
   let h = `<div class="head"><h2>🏷️ ${S.allTop ? 'Top-Angebote' : 'Alle Angebote'}</h2>
       <button class="btn small ${S.allTop ? 'on' : ''}" data-act="allTop">🔥 Top-Angebote</button></div>
-    <div class="sortbar"><span>${list.length} Angebote${S.allTop ? ' ab 30 % Rabatt' : ''} · ${sel.length ? esc(sel.join(', ')) : 'alle Händler'}</span></div>`;
+    <div class="sortbar"><span>${S.q ? `<b>„${esc(S.q)}“</b>: ` : ''}${list.length} Angebote${S.allTop ? ' ab 30 % Rabatt' : ''} · ${sel.length ? esc(sel.join(', ')) : 'alle Händler'}</span></div>`;
   // Schnellwahl: springt zur Kategorie (kein Filter)
   const cc = countBy(list, o => o.category);
   const cats = S.allTop ? [] : [...new Set(list.map(o => o.category))];
   if (cats.length > 1) h += '<div class="chips scroll all-jump">' + cats.map(c =>
     `<button class="chip" data-act="allJump" data-c="${esc(c)}">${ICONS[c] || ''} ${esc(c)} <i>${cc[c]}</i></button>`).join('') + '</div>';
-  if (!list.length) { view.innerHTML = h + '<p class="empty">Keine passenden Angebote.</p>'; return; }
+  if (!list.length) { view.innerHTML = h + `<p class="empty">Keine passenden Angebote${S.q ? ` zu „${esc(S.q)}“` : ''}.</p>`; return; }
   S.allOrder = cats;
   S.allStart = cats.map(c => list.findIndex(o => o.category === c));
   const from = Math.min(S.allFrom || 0, list.length - 1);
@@ -1051,6 +1054,73 @@ async function renderPicker(cat, group) {
       : groupActions(cat, null, new Set(), false, ['pickFav', 'pickWish'])}</div>`;
     if (group) h += `<p class="sub" id="draftInfo">${draftInfo(d)}</p>`;
   }
+  view.innerHTML = h;
+}
+
+// Suche von den Favoriten aus: ganzer Katalog (auch ohne aktuelles Angebot), jede Kategorie/Produktgruppe und
+// jede Marke wählbar – die Treffer schlagen nur vor, sie schränken die Auswahl nicht ein
+async function renderFavSearch() {
+  if (!S.catalog) {
+    view.innerHTML = '<p class="loading">Lade Produktkatalog …</p>';
+    try { await loadCatalog(); } catch { view.innerHTML = '<p class="empty">Katalog konnte nicht geladen werden.</p>'; return; }
+    if (route()[0] !== 'add' || !S.q) return;
+  }
+  const qt = qTokens(S.q);
+  let hits = S.catalog.filter(e => matchQuery(catOffer(e), qt)?.strong);
+  const fuzzy = !hits.length;
+  if (fuzzy) hits = S.catalog.filter(e => matchQuery(catOffer(e), qt, true));
+  const live = new Set(visible().map(o => o.product_key));
+  const [fc, fg] = (S.qFacet || '').split('\u0001');
+  const inFacet = e => !S.qFacet || (e.category === fc && (!fg || e.group === fg));
+  // Produktgruppen, deren Name passt (auch ohne Produkte im Katalog)
+  const word = t => x => norm(x).split(/[^a-z0-9]+/).some(w => w.startsWith(t));
+  const groupHits = [];
+  for (const c of S.categories) for (const g of groupsOf(c)) if (g !== OTHER && qt.some(t => t.length >= 3 && word(t)(g))) groupHits.push([c, g]);
+  // Vorschläge für die Eingrenzung aus den Treffern + freie Wahl über die Liste aller Kategorien/Gruppen
+  const fcnt = countBy(hits, e => e.category + '\u0001' + e.group);
+  const facets = Object.entries(fcnt).sort((a, b) => b[1] - a[1]);
+  if (S.qFacet && !fcnt[S.qFacet]) facets.unshift([S.qFacet, 0]);
+  const fav = searchFavNow(), has = !!findFav(fav);
+  const nNow = visible().filter(o => favMatch(fav, o)).length;
+  const facetName = k => { const [c, g] = k.split('\u0001'); return g ? (g === OTHER ? `${c} · Weitere` : g) : `${c} (ganze Kategorie)`; };
+  let h = `<div class="head"><h2>„${esc(S.q)}“</h2>
+    <button class="btn small act-fav ${has ? 'on' : ''}" data-act="searchFav">${has ? '★ Gemerkt' : '☆ Als Favorit merken'}</button></div>
+    <p class="sub">Suche im ganzen Produktkatalog – auch Produkte, die gerade nicht im Angebot sind. Eingrenzen ist freiwillig;
+      jede Kategorie und jede Marke ist wählbar. Aktuell passen <b>${nNow}</b> Angebote.</p>`;
+  h += `<p class="sub">Produktgruppe:</p><div class="chips wrap pick">
+    <button class="chip ${S.qFacet ? '' : 'on'}" data-act="facet" data-k="">Alle</button>` +
+    facets.slice(0, 16).map(([k, n]) => `<button class="chip ${S.qFacet === k ? 'on' : ''}" data-act="facet" data-k="${esc(k)}">${ICONS[k.split('\u0001')[0]] || ''} ${esc(facetName(k))}${n ? ` <i>${n}</i>` : ''}</button>`).join('') +
+    `</div><label class="fs-any">Andere Kategorie / Produktgruppe:
+      <select data-fsfacet><option value="">– frei wählen –</option>${S.categories.map(c => `<optgroup label="${esc(c)}">
+        <option value="${esc(c + '\u0001')}" ${S.qFacet === c + '\u0001' ? 'selected' : ''}>${esc(c)} (ganze Kategorie)</option>
+        ${groupsOf(c).map(g => `<option value="${esc(c + '\u0001' + g)}" ${S.qFacet === c + '\u0001' + g ? 'selected' : ''}>${esc(g === OTHER ? 'Weitere' : g)}</option>`).join('')}</optgroup>`).join('')}
+      </select></label>`;
+  // Marken: aus den Treffern, bekannte Marken zur gewählten Gruppe und Marken, deren Name zur Suche passt
+  const brands = new Map();
+  for (const e of hits.filter(inFacet)) {
+    const b = brands.get(e.brand_key) || { key: e.brand_key, name: e.brand || 'Ohne Marke', type: e.brand_type, n: 0 };
+    b.n++; brands.set(e.brand_key, b);
+  }
+  if (fc && fg) for (const k of knownBrands(fc, fg)) if (!brands.has(k.key)) brands.set(k.key, { ...k, n: 0 });
+  for (const [k, name] of KNOWN_NAME) if (!brands.has(k) && qt.some(t => t.length >= 3 && word(t)(name))) brands.set(k, { key: k, name, type: KNOWN_RET.has(k) ? 'eigen' : 'marke', n: 0 });
+  for (const k of S.qBrands) if (!brands.has(k)) brands.set(k, { key: k, name: KNOWN_NAME.get(k) || k, type: 'marke', n: 0 });
+  const bl = sortBrands([...brands.values()].filter(b => b.key));
+  if (bl.length) h += `<p class="sub">Marke:</p><div class="chips wrap pick">
+    <button class="chip ${S.qBrands.size ? '' : 'on'}" data-act="qBrand" data-b="">Alle</button>` +
+    bl.slice(0, 30).map(b => `<button class="chip ${S.qBrands.has(b.key) ? 'on' : ''}" data-act="qBrand" data-b="${esc(b.key)}">${esc(b.name)}${b.n ? ` <i>${b.n}</i>` : ''}</button>`).join('') + '</div>';
+  if (groupHits.length) h += `<div class="chips-sep"><span>Passende Produktgruppen</span></div><div class="chips wrap pick">` +
+    groupHits.slice(0, 20).map(([c, g]) => `<a class="chip ${findFav({ type: 'group', category: c, group: g }) ? 'faved' : ''}" href="#/add/${enc(c)}/${enc(g)}" data-act="fsGo">${ICONS[c] || ''} ${esc(g)}</a>`).join('') + '</div>';
+  const prods = hits.filter(inFacet).filter(e => !S.qBrands.size || S.qBrands.has(e.brand_key))
+    .sort((a, b) => live.has(b.product_key) - live.has(a.product_key) || (a.name || '').localeCompare(b.name || '', 'de'));
+  h += `<div class="chips-sep"><span>Einzelne Produkte${prods.length ? ` (${prods.length})` : ''}</span></div>`;
+  if (fuzzy && prods.length) h += '<p class="sub">Keine genauen Treffer – ähnliche Schreibweisen:</p>';
+  h += prods.length ? '<div class="fs-prods">' + prods.slice(0, 40).map(e => {
+    const f = catalogProductFav(e), on = !!findFav(f);
+    return `<button class="fs-prod ${on ? 'on' : ''}" data-act="fsProduct" data-pk="${esc(e.product_key)}">
+      <span><b>${esc(`${e.brand || ''} ${e.name}`.trim())}</b><small>${ICONS[e.category] || ''} ${esc(e.group === OTHER ? e.category : e.group)}${live.has(e.product_key) ? ' · <span class="fs-live">im Angebot</span>' : ''}</small></span>
+      <span class="fs-star">${on ? '★' : '☆'}</span></button>`;
+  }).join('') + '</div>' + (prods.length > 40 ? `<p class="sub">+ ${prods.length - 40} weitere – Suche genauer eingeben oder eingrenzen.</p>` : '')
+    : '<p class="empty">Kein Produkt im Katalog – der Suchbegriff lässt sich trotzdem als Favorit merken.</p>';
   view.innerHTML = h;
 }
 
@@ -1593,7 +1663,8 @@ function render() {
   const tab = ['favs', 'add'].includes(r[0]) ? 'favs' : ['list', 'more', 'all'].includes(r[0]) ? r[0] : 'browse';
   document.querySelectorAll('.tabs a').forEach(a => a.classList.toggle('active', a.dataset.tab === tab));
   $('#back').hidden = !(S.q || r[0] === 'c' || r[0] === 'add');
-  const noTop = tab === 'list' || tab === 'more' || !!S.wizard;  // Suche und Händler-Filter spielen auf Zettel und Einstellungen keine Rolle
+  const noTop = tab === 'list' || tab === 'more' || !!S.wizard;
+  qInput.placeholder = tab === 'favs' ? 'Favorit suchen: alle Produkte & Marken …' : tab === 'all' ? 'In „Alle“ suchen …' : 'Angebote suchen: Butter, Kaffee, Jacobs …';  // Suche und Händler-Filter spielen auf Zettel und Einstellungen keine Rolle
   $('header.top').hidden = noTop;
   document.body.classList.toggle('no-top', noTop);
   document.body.classList.toggle('wizard', !!S.wizard);
@@ -1603,7 +1674,7 @@ function render() {
     if (S.q) renderSearch();
     else if (r[0] === 'c' && r[1]) renderCategory(r[1], r[2]);
     else renderHome();
-  } else if (r[0] === 'add') renderPicker(r[1], r[2]);
+  } else if (r[0] === 'add') S.q ? renderFavSearch() : renderPicker(r[1], r[2]);
   else if (tab === 'favs') renderFavs();
   else if (tab === 'list') renderShop();
   else if (tab === 'all') renderAll();
@@ -1619,6 +1690,11 @@ const tabOf = hash => {
   return r[0] === 'all' ? 'all' : !r[0] || r[0] === 'c' ? 'browse' : null;
 };
 const tabMem = {};
+// Reiter, zu dem eine Suche gehört: Kategorien und Alle suchen in den aktuellen Angeboten, Favoriten im ganzen Katalog
+const searchTab = hash => {
+  const r = hash.replace(/^#\/?/, '').split('/').filter(Boolean);
+  return !r[0] || r[0] === 'c' ? 'browse' : r[0] === 'all' ? 'all' : r[0] === 'favs' || r[0] === 'add' ? 'fav' : null;
+};
 let lastHash = location.hash || '#/', restoring = null;
 
 // Seitenwechsel ersetzen den aktuellen Verlaufseintrag (kein Zurückblättern durch frühere Tabs). Der Verlauf besteht
@@ -1685,6 +1761,7 @@ function onRoute() {
   const old = tabOf(lastHash);
   if (old) tabMem[old] = { hash: lastHash, y: window.scrollY, limit: S.limit, allFrom: S.allFrom, brands: S.brands, brandOnly: S.brandOnly,
     q: S.q, qFacet: S.qFacet, qBrands: new Set(S.qBrands), showWeak: S.showWeak };
+  const oldSearch = searchTab(lastHash);
   lastHash = location.hash || '#/';
   const top = route()[0];
   if (!top || ['c', 'all', 'favs', 'list'].includes(top)) save('lastTab', top === 'c' ? '' : top || '');
@@ -1702,7 +1779,7 @@ function onRoute() {
     Object.assign(S, { q: m.q, qFacet: m.qFacet, qBrands: m.qBrands, showWeak: m.showWeak });
     qInput.value = m.q;
     $('#clearQ').hidden = false;
-  } else if (S.q && r[0] && r[0] !== 'c') clearSearch(false);
+  } else if (S.q && searchTab(lastHash) !== oldSearch) clearSearch(false);  // Suche bleibt in ihrem Reiter
   render();
   window.scrollTo(0, m?.y || 0);
 }
@@ -1884,6 +1961,13 @@ const onClick = {
   },
   showWeak: () => { S.showWeak = true; rerender(); },
   searchFav: () => { toggleFav(searchFavNow()); rerender(); },
+  // Favoriten-Suche: zur Produktgruppe wechseln (Suche endet) bzw. einzelnes Produkt merken
+  fsGo: (el, e) => { e.preventDefault(); clearSearch(false); nav(el.getAttribute('href')); },
+  fsProduct: el => {
+    const e = S.catalog?.find(x => x.product_key === el.dataset.pk);
+    if (e) toggleFav(catalogProductFav(e));
+    rerender();
+  },
   favSort: el => { S.favSort = el.dataset.s; save('favSort', S.favSort); rerender(); },
   favOpen: el => { if (Date.now() - (S.dragDone || 0) < 400) return; const id = el.dataset.fid; S.open.has(id) ? S.open.delete(id) : S.open.add(id); rerender(); },
   favMetric: el => {
@@ -2144,6 +2228,7 @@ document.addEventListener('click', e => {
 
 document.addEventListener('change', e => {
   const el = e.target;
+  if ('fsfacet' in el.dataset) { S.qFacet = el.value || null; S.qBrands.clear(); rerender(); return; }  // Favoriten-Suche: freie Gruppe
   if ('setName' in el.dataset) {
     Cloud.setName(el.value);
     liFavsPush(S.favs);  // Favoriten unter dem neuen Namen abgleichen
@@ -2254,8 +2339,8 @@ qInput.addEventListener('input', () => {
     S.showWeak = false;
     S.limit = 60;
     $('#clearQ').hidden = !qInput.value;
-    const r = route();
-    if (S.q && r[0] && r[0] !== 'c') { nav('#/'); return; }
+    // Favoriten: Suche über den ganzen Katalog auf der Hinzufügen-Seite; Kategorien und Alle bleiben, wo sie sind
+    if (S.q && searchTab(location.hash || '#/') === 'fav' && route()[0] !== 'add') { nav('#/add'); return; }
     render();
   }, 160);
 });
@@ -2567,11 +2652,12 @@ const GUIDE = [
       ['Sortierung', 'über der Liste: Grundpreis (€/kg, €/l), Preis oder Rabatt. Beim Grundpreis stehen gleiche Einheiten zusammen, kg und l zuerst. (Gilt auch für die Suche.)'],
     ] },
   { id: 'alle', ico: '🏷️', title: 'Alle & Suche',
-    intro: 'Alle Angebote in einer Liste, nach Kategorien gegliedert – und die Suche, die überall oben steht.',
+    intro: 'Alle Angebote in einer Liste, nach Kategorien gegliedert – und die Suche. Die Suche gehört immer zum Reiter, in dem du sie startest.',
     items: [
       ['Gliederung', 'die Angebote stehen nach Kategorien geordnet, innerhalb nach Rabatt. Die Chips oben (z.B. „🧀 Käse“) springen zur jeweiligen Kategorie.'],
       ['🔥 Top-Angebote', 'zeigt nur Angebote ab 30 % Rabatt, nach Rabatt sortiert. Nochmal tippen = zurück zu allen.'],
-      ['Suche', 'z.B. „Butter“, „Jacobs Kaffee“. Gesucht wird zuerst genau (Wortanfang), Tippfehler nur, wenn sonst nichts passt. Die Treffer lassen sich nach Produktgruppe und Marke eingrenzen und nach Grundpreis, Preis oder Rabatt sortieren; Treffer nur in der Beschreibung lassen sich zuschalten.'],
+      ['Suche je Reiter', 'in <b>Kategorien</b> findest du aktuelle Angebote mit Eingrenzung nach Produktgruppe und Marke, der Reiter bleibt Kategorien. In <b>Alle</b> filtert die Suche nur die Liste darunter (Gliederung und Top-Angebote bleiben). Von den <b>Favoriten</b> aus sucht sie im ganzen Katalog – siehe Favoriten.'],
+      ['Suchbegriffe', 'z.B. „Butter“, „Jacobs Kaffee“. Gesucht wird zuerst genau (Wortanfang), Tippfehler nur, wenn sonst nichts passt. Die Treffer lassen sich nach Produktgruppe und Marke eingrenzen und nach Grundpreis, Preis oder Rabatt sortieren; Treffer nur in der Beschreibung lassen sich zuschalten.'],
       ['Händler-Chips', 'die farbigen Chips oben: markierte Händler werden angezeigt, ohne Markierung alle.'],
       ['Angebot antippen', 'öffnet die Details: Preise mit/ohne App, Normalpreis, Gültigkeit, Märkte, Preisverlauf und Preis-Leiste.'],
       ['👉 Nach rechts wischen', 'obere Hälfte der Karte = auf den Zettel, untere Hälfte = ❗ wichtig auf den Zettel. Die Zone unter dem Finger leuchtet.'],
@@ -2582,6 +2668,7 @@ const GUIDE = [
     intro: 'Was du regelmäßig kaufst – die App zeigt, wo es gerade im Angebot ist.',
     items: [
       ['＋ Hinzufügen', 'Kategorie und Produktgruppe wählen, Marken markieren. Hier gibt es auch Marken, die gerade nicht im Angebot sind (z.B. für später).'],
+      ['🔍 Suche', 'oben im Reiter Favoriten sucht im ganzen Produktkatalog, auch nach Produkten ohne aktuelles Angebot. Produktgruppe und Marke sind frei wählbar – über „Andere Kategorie / Produktgruppe“ jede Kategorie, auch wenn die Suche dort nichts findet. „☆ Als Favorit merken“ speichert Suchbegriff mit Auswahl; einzelne Produkte merkst du mit ☆.'],
       ['Favorit antippen', 'klappt die passenden Angebote auf, das günstigste steht oben. „neu“ = noch nicht gesehene Angebote.'],
       ['Preis-Leiste', 'grün = günstig, rot = teuer im Vergleich der letzten 12 Monate. Der Strich in der Mitte ist der Durchschnitt, der Punkt das beste aktuelle Angebot.'],
       ['⋮ Einstellungen', 'Name, Vergleich nach Grundpreis oder Packungspreis (z.B. Kaffeekapseln), Preisalarm „max. … €“.'],
@@ -2680,7 +2767,7 @@ const TOUR = [
   { tab: 1, ico: '🏷️', title: 'Alle & Suche',
     text: 'Alle Angebote in einer Liste, nach Kategorien gegliedert. <b>🔥 Top-Angebote</b> zeigt nur die mit mindestens 30 % Rabatt.',
     points: ['Die Chips oben <b>springen</b> zur jeweiligen Kategorie.',
-      'Die <b>Suche</b> oben gilt überall, z.B. „Butter“ – die Treffer lassen sich nach Grundpreis, Preis oder Rabatt sortieren.',
+      'Die <b>Suche</b> bleibt im Reiter: in „Alle“ filtert sie die Liste, in Kategorien zeigt sie die Treffer mit Eingrenzung, bei Favoriten sucht sie im ganzen Katalog.',
       '<b>📱</b> = Preis nur mit Händler-App; unter Mehr → Filter wählst du, welche Apps du nutzt.',
       'Angebot <b>antippen</b>: Details mit Märkten, Preisverlauf und Preis-Leiste.'], mock: 'alle' },
   { tab: 1, ico: '👉', title: 'Wischen statt Knöpfe',

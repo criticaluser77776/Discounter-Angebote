@@ -800,3 +800,16 @@ details.mk summary .muted { font-size: .85rem; margin-left: auto; }
 .li-note-f { display: flex; gap: 6px; align-items: center; }
 .li-note-f input { flex: 1; min-width: 0; }
 .li-note-f .li-note-del { flex: none; width: 44px; height: 42px; margin: 0; justify-content: center; padding: 0; font-size: 1.1rem; }
+/* Favoriten-Suche: freie Wahl der Gruppe, Produkte aus dem Katalog */
+.fs-any { display: flex; flex-direction: column; gap: 4px; margin: 4px 16px 8px; font-size: .82rem; color: var(--muted); }
+.fs-any select { font: inherit; font-size: .9rem; color: var(--text); background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 8px; }
+.fs-prods { display: flex; flex-direction: column; gap: 6px; margin: 4px 12px 16px; }
+.fs-prod { display: flex; align-items: center; gap: 8px; text-align: left; width: 100%; padding: 8px 10px; border: 1px solid var(--line);
+  border-radius: 10px; background: var(--surface); color: var(--text); font: inherit; cursor: pointer; }
+.fs-prod > span:first-child { flex: 1; min-width: 0; }
+.fs-prod b { display: block; font-weight: 600; font-size: .9rem; }
+.fs-prod small { color: var(--muted); font-size: .76rem; }
+.fs-prod .fs-live { color: var(--green); font-weight: 600; }
+.fs-prod .fs-star { font-size: 1.2rem; color: var(--muted); }
+.fs-prod.on { border-color: var(--star); }
+.fs-prod.on .fs-star { color: var(--star); }

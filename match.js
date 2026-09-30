@@ -80,7 +80,7 @@ function favMatch(f, o) {
     case 'search':
       if (!matchQuery(o, qTokens(f.q))?.strong) return false;
       // mitgemerkte Filter der Suche: Produktgruppe und Marken
-      if (f.category && (o.category !== f.category || o.group !== f.group)) return false;
+      if (f.category && (o.category !== f.category || (f.group && o.group !== f.group))) return false;
       if (f.brands?.length && !brandHit(f, o)) return false;
       break;
     default:
