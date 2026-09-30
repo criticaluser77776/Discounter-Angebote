@@ -618,7 +618,8 @@ function liRow(it, best) {
       `${esc(best.brand)} ${esc(best.name)} · ${esc(metricLine(best, it.fav))}` : 'Wunsch · derzeit kein Angebot');
   } else if (!it.done && it.price == null) {
     const m = liMatches(it.name, catInfo(it.cat).id);
-    if (m.length) sub.push(`<span class="li-hint">💡 im Angebot: ${esc(rname(m[0]))} ${esc(priceLine(m[0]))}${m.length > 1 ? ` · ${m.length} Angebote` : ''}</span>`);
+    const n = m.length ? liSearchOffers(it).length : 0;  // Anzahl wie Suche / langes Drücken
+    if (m.length) sub.push(`<span class="li-hint">💡 im Angebot: ${esc(rname(m[0]))} ${esc(priceLine(m[0]))}${n > 1 ? ` · ${n} Angebote` : ''}</span>`);
   }
   if (it.note && !liSimple()) sub.unshift(esc(it.note));
   if (!liSimple() && Cloud.enabled && it.by && it.by !== Cloud.name()) sub.push(`von ${esc(it.by)}`);
@@ -1331,7 +1332,18 @@ function liOffersOf(it) {
   if (!S.loaded || it.done) return [];
   if (it.kind === 'offer') { const o = S.byId.get(it.offer.id); return o ? [o] : []; }
   if (it.kind === 'wish') return sortOffers(visible().filter(o => favMatch(it.fav, o)), metricSort(it.fav));
-  return liMatches(it.name, catInfo(it.cat).id);
+  return liSearchOffers(it);
+}
+// freier Eintrag: dieselben Treffer wie die Suche oben (eigene Zuordnung per Chips im Bearbeiten-Dialog hat Vorrang)
+function liSearchOffers(it) {
+  const learned = R.learn.get(nkey(it.name));
+  if (learned && !learned.del && learned.match) return liMatches(it.name, catInfo(it.cat).id);
+  // kurz zwischenspeichern: die Zeilen des Zettels fragen beim Zeichnen jeweils einzeln
+  const k = nkey(it.name), c = LI.searchCache ||= new Map(), hit = c.get(k);
+  if (hit && Date.now() - hit.t < 3000) return hit.m;
+  const m = sortOffers([...searchHits(it.name)]);
+  c.set(k, { m, t: Date.now() });
+  return m;
 }
 // langes Drücken auf einen Eintrag: passende Angebote als Liste; nach rechts wischen ersetzt den Eintrag durch das Angebot
 function liShowOffers(it) {

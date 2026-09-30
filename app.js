@@ -796,9 +796,9 @@ function renderAll() {
   view.innerHTML = h + '</div>';
 }
 
-function renderSearch() {
-  const qt = qTokens(S.q);
-  const vis = visible();
+// Suchtreffer wie in der Suche oben: [Angebot, stark (Name/Marke/Gruppe) oder nur Beschreibung], ggf. Tippfehler-Suche
+function searchResults(q) {
+  const qt = qTokens(q), vis = visible();
   let res = [], fuzzy = false;
   for (const o of vis) {
     const m = matchQuery(o, qt);
@@ -811,6 +811,17 @@ function renderSearch() {
       if (m) res.push([o, m.strong]);
     }
   }
+  return { res, fuzzy };
+}
+// Treffer, die die Suche standardmäßig zeigt (ohne „nur in der Beschreibung“, falls es andere gibt)
+function searchHits(q) {
+  const { res } = searchResults(q);
+  const strong = res.filter(r => r[1]).map(r => r[0]);
+  return strong.length ? strong : res.map(r => r[0]);
+}
+
+function renderSearch() {
+  const { res, fuzzy } = searchResults(S.q);
   const strong = res.filter(r => r[1]).map(r => r[0]);
   const weakN = res.length - strong.length;
   let list = strong.length && !S.showWeak ? strong : res.map(r => r[0]);
@@ -2580,7 +2591,7 @@ const GUIDE = [
       ['Wischen', 'nach rechts = abhaken (Rückgängig möglich), nach links = löschen.'],
       ['Antippen', 'öffnet die Bearbeitung: Menge, Notiz, Kategorie, Preis, passende Favoriten und Angebote.'],
       ['💡 im Angebot', 'zeigt in der Ansicht „Details“, dass es zu einem Eintrag gerade ein Angebot gibt.'],
-      ['Lange drücken (Details)', 'öffnet alle passenden Angebote. Ein Angebot nach rechts wischen ersetzt den Eintrag durch dieses Angebot – Menge und Notiz bleiben.'],
+      ['Lange drücken (Details)', 'öffnet die passenden Angebote – bei getippten Einträgen dieselben Treffer wie die Suche oben. Ein Angebot nach rechts wischen ersetzt den Eintrag durch dieses Angebot – Menge und Notiz bleiben.'],
       ['Ansichten', '„Einfach“ zeigt nur Namen und Mengen, „Details“ zusätzlich Angebote und Preise; sortierbar nach Eingabe, A–Z oder Kategorie.'],
       ['Verlauf', 'früher Eingetragenes – ＋ setzt es wieder auf den Zettel, nach links wischen entfernt es aus dem Verlauf.'],
     ] },
