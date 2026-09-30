@@ -649,3 +649,6 @@ details.mk summary .muted { font-size: .85rem; margin-left: auto; }
 .card .meta { overflow: hidden; }
 .cprice { gap: 1px; }
 .cprice small.np { font-size: .72rem; }
+/* Zettel: langes Drücken zeigt Angebote – keine Textauswahl/Callout dabei */
+.li-row .li-fg { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+.li-sheet-h { margin: 4px 0 2px; padding: 0 16px; font-size: 1.1rem; }

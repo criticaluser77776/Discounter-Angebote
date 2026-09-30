@@ -1310,17 +1310,49 @@ document.addEventListener('change', e => {
   }
 });
 
-// Wischgesten: rechts = abhaken / zurück, links = löschen (mit Rückgängig)
+// Angebote eines Zettel-Eintrags (freier Eintrag: Namens-Treffer, Wunsch: Favoriten-Treffer, Angebot: das Angebot)
+function liOffersOf(it) {
+  if (!S.loaded || it.done) return [];
+  if (it.kind === 'offer') { const o = S.byId.get(it.offer.id); return o ? [o] : []; }
+  if (it.kind === 'wish') return sortOffers(visible().filter(o => favMatch(it.fav, o)), metricSort(it.fav));
+  return liMatches(it.name, catInfo(it.cat).id);
+}
+// langes Drücken auf einen Eintrag: passende Angebote im Fenster (ein einzelnes Angebot direkt als Detailansicht)
+function liShowOffers(it) {
+  const m = liOffersOf(it);
+  if (!m.length) { toast(`Zu „${it.name}“ gerade kein Angebot`); return; }
+  navigator.vibrate?.(15);
+  if (m.length === 1) { openDetail(m[0].id); return; }
+  openSheet(`<div class="grab"></div><h2 class="li-sheet-h">Angebote zu „${esc(it.name)}“</h2>
+    <p class="sub" style="margin:0 0 6px">${m.length} Angebot${m.length === 1 ? '' : 'e'} · günstigstes zuerst</p>
+    ${offerList(m, { limit: 40, heads: false, sort: it.kind === 'wish' ? metricSort(it.fav) : S.sort })}`);
+}
+
+// Wischgesten: rechts = abhaken / zurück, links = löschen (mit Rückgängig); langes Drücken = Angebote zeigen
 (() => {
   let sw = null;
   view.addEventListener('pointerdown', e => {
     const fg = e.target.closest('.li-row[data-lid] .li-fg, .li-row[data-hid] .li-fg');  // Zettel und Verlauf
-    if (!fg || e.button > 0 || e.target.closest('button')) return;
+    if (!fg || e.button > 0 || e.target.closest('button, input')) return;
     sw = { fg, row: fg.parentElement, x: e.clientX, y: e.clientY, dx: 0, active: false, id: e.pointerId };
+    const it = fg.parentElement.dataset.lid && R.item.get(fg.parentElement.dataset.lid);
+    if (it && !it.done) {
+      const s0 = sw;
+      s0.lp = setTimeout(() => {
+        if (sw !== s0 || s0.active) return;
+        s0.long = true;
+        LI.suppress = Date.now() + 10e3;  // folgenden Klick (Bearbeiten) unterdrücken, bis losgelassen
+        liShowOffers(it);
+      }, 500);
+    }
   });
+  // Kontextmenü/Textauswahl beim langen Drücken auf dem Zettel verhindern
+  view.addEventListener('contextmenu', e => { if (e.target.closest('.li-row[data-lid]')) e.preventDefault(); });
   view.addEventListener('pointermove', e => {
     if (!sw || e.pointerId !== sw.id) return;
     const dx = e.clientX - sw.x, dy = e.clientY - sw.y;
+    if (Math.abs(dx) > 8 || Math.abs(dy) > 8) clearTimeout(sw.lp);
+    if (sw.long) return;
     if (!sw.active) {
       if (Math.abs(dx) > 12 && Math.abs(dx) > Math.abs(dy) * 1.5) {
         sw.active = true;
@@ -1337,6 +1369,8 @@ document.addEventListener('change', e => {
     if (!sw) return;
     const s = sw;
     sw = null;
+    clearTimeout(s.lp);
+    if (s.long) { LI.suppress = Date.now(); return; }  // Klick nach dem Loslassen noch kurz unterdrücken
     if (!s.active) return;
     LI.suppress = Date.now();
     const limit = Math.min(110, s.row.offsetWidth * 0.3);
