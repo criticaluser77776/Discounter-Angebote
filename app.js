@@ -149,7 +149,7 @@ function effOf(v) {
 // Angezeigt wird je nach Filter die günstigste passende Variante (siehe choose).
 const FAMILY = { marktkauf: 'edeka' };
 const VARIANT_FIELDS = ['id', 'retailer', 'source', 'price', 'old_price', 'regular_price', 'discount', 'unit_price', 'unit',
-  'unit_price_source', 'app_price', 'app_label', 'app_note', 'image', 'description', 'places', 'markets'];
+  'unit_price_source', 'unit_approx', 'size', 'app_price', 'app_label', 'app_note', 'image', 'description', 'places', 'markets'];
 function aggregate(list) {
   const by = new Map(), out = [];
   for (const v of list) {
@@ -614,8 +614,9 @@ function priceBlock(o, metric) {
 // kompakter Preis der Karte: Vergleichswert fett (Grundpreis bzw. Packungspreis), darunter der andere Wert
 function cardPrice(o, metric) {
   const byPack = metric === 'price' || !o.eu;
-  const main = byPack ? `${fmt(o.ep)} €` : `${fmt(o.eu)} €/${esc(o.unit)}`;
-  const sub = byPack ? (o.eu ? `${fmt(o.eu)} €/${esc(o.unit)}` : '') : `${fmt(o.ep)} €`;
+  const ab = o.unit_approx ? 'ab ' : '';  // Packungsgrößen-Spanne: Grundpreis der größten Packung
+  const main = byPack ? `${fmt(o.ep)} €` : `${ab}${fmt(o.eu)} €/${esc(o.unit)}`;
+  const sub = byPack ? (o.eu ? `${ab}${fmt(o.eu)} €/${esc(o.unit)}` : '') : `${fmt(o.ep)} €`;
   const np = o.ea ? normalPrice(o) : null;
   return `<div class="cprice"><b class="${o.ea ? 'is-app' : ''}">${o.ea ? '📱 ' : ''}${main}</b>
     <small>${sub}${np != null ? ` · ohne App ${fmt(np)} €` : ''}</small></div>`;
@@ -653,7 +654,7 @@ function card(o, opts = {}) {
     <div class="thumb">${img}</div>
     <div class="info">
       <h3>${onl}${esc(title)}</h3>
-      <div class="meta"><span class="rt" style="--c:${r.color}">${esc(r.name)}${also}</span>${o.description ? `<span class="brand">${esc(o.description)}</span>` : ''}</div>
+      <div class="meta"><span class="rt" style="--c:${r.color}">${esc(r.name)}${also}</span>${o.size ? `<span class="size">${esc(o.size)}</span>` : ''}${o.description ? `<span class="brand">${esc(o.description)}</span>` : ''}</div>
       ${tags.length ? `<div class="tags">${tags.join('')}</div>` : ''}
     </div>
     <div class="side">
@@ -1474,6 +1475,7 @@ async function openDetail(id) {
     ${detailPrices(o, old, d)}
     <div class="kv">
       <div><span>Gültig</span><span>${valid}</span></div>
+      ${o.size ? `<div><span>Packung</span><span>${esc(o.size)}${o.unit_approx ? ' (Grundpreis „ab“ = größte Packung)' : ''}</span></div>` : ''}
       <div><span>Einordnung</span><span><a href="#/c/${enc(o.category)}/${enc(o.group)}" data-act="goto">${esc(o.category)} › ${esc(o.group)}</a></span></div>
       ${o.variants.length > 1 ? variantRows(o) : o.markets?.length ? `<div><span>Märkte</span><span>${o.markets.slice(0, 8).map(esc).join('<br>')}${o.markets.length > 8 ? `<br>+ ${o.markets.length - 8} weitere` : ''}</span></div>` : ''}
       <div><span>Orte</span><span>${places.length >= S.places.length ? 'alle Orte der Strecke' : esc(places.join(', '))}</span></div>

@@ -622,3 +622,4 @@ details.mk summary .muted { font-size: .85rem; margin-left: auto; }
 .kv .v-off { opacity: .45; }
 .chip:not(.on)[data-act="fCat"], .chip:not(.on)[data-act="fApp"] { text-decoration: line-through; opacity: .7; }
 .meta .also { font-weight: 400; color: var(--muted); margin-left: 4px; }
+.meta .size { font-weight: 600; color: var(--text); white-space: nowrap; }
