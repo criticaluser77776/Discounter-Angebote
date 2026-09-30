@@ -1101,7 +1101,8 @@ Object.assign(onClick, {
     if (LI.qtyClosed?.id === it.id && Date.now() - LI.qtyClosed.t < 500) return;
     LI.qtyId = LI.qtyId === it.id ? null : it.id;  // erneut antippen schließt das Mengenfeld
     liRefresh();
-    if (LI.qtyId) { const inp = $(`.li-qin[data-lid="${it.id}"]`); if (inp) { inp.focus(); inp.select(); } }
+    // Mengenfeld fokussieren, aber ohne Tastatur (inputmode none) – erst ein Tipp ins Feld öffnet sie
+    if (LI.qtyId) { const inp = $(`.li-qin[data-lid="${it.id}"]`); if (inp) { inp.inputMode = 'none'; inp.focus(); inp.select(); } }
   },
   liQSet: el => { const it = liById(el); if (it) { LI.qtyId = null; liRefresh(); liEditSheet(it); } },
 
@@ -1314,6 +1315,15 @@ document.addEventListener('input', e => {
 document.addEventListener('keydown', e => {
   if (e.key === 'Enter' && e.target.dataset?.liq) { e.preventDefault(); e.target.blur(); }
   if (e.key === 'Escape' && e.target.dataset?.liq) { LI.qtyId = null; e.target.dataset.liq = ''; liRefresh(); }
+});
+
+// Tipp ins Mengenfeld ohne Tastatur: Tastatur freigeben und neu fokussieren (Inhalt markiert zum Überschreiben)
+document.addEventListener('pointerdown', e => {
+  const el = e.target;
+  if (!el.dataset?.liq || el.inputMode !== 'none') return;
+  el.inputMode = '';
+  el.blur();
+  el.addEventListener('focus', () => setTimeout(() => el.select(), 0), { once: true });
 });
 
 document.addEventListener('change', e => {
