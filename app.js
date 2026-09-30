@@ -2653,10 +2653,10 @@ const TOUR_MOCK = {
     <div class="sortbar"><span>Ansicht</span><div class="seg"><button class="tz-1">Einfach</button><button class="tz-2 tm-tap t1">Details</button></div></div>
     <div class="tz-list">${[['🥛', 'Milch', '2 l', 'Aldi 0,99 €/l · 5 Angebote'], ['🧈', 'Butter', '', 'Lidl 5,16 €/kg · 14 Angebote']].map(([i, n, q, h]) =>
       `<div class="tz-row"><span>${i}</span><span class="tz-t"><b>${n}</b><small class="tz-h">💡 im Angebot: ${h}</small></span><span class="tz-q">${q}</span><span class="tz-c">✓</span></div>`).join('')}</div></div>`,
-  // Untermenüs nacheinander antippen
+  // Untermenüs (ohne Animation)
   mehr: () => `<div class="tour-mock tm-mehr"><div class="tm-cap">Beispiel: Untermenüs unter „Mehr“</div>
     <nav class="more-menu">${[['🔎', 'Filter', 'Apps, Kategorien, Märkte'], ['🎨', 'Darstellung', 'Farbschema · Start-Tab · 🔔'],
-      ['ℹ️', 'Über die App', 'Anleitung je Reiter']].map(([i, t, d], k) => `<span class="more-item tm-tap tmm t${k + 1}"><span class="mi-ico">${i}</span>
+      ['ℹ️', 'Über die App', 'Anleitung je Reiter']].map(([i, t, d]) => `<span class="more-item"><span class="mi-ico">${i}</span>
       <span class="mi-txt"><b>${t}</b><small>${d}</small></span><span class="mi-go">›</span></span>`).join('')}</nav></div>`,
 };
 
