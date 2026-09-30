@@ -33,10 +33,12 @@ function lev(a, b, max) {
   return prev[b.length];
 }
 
-// Treffer eines Suchworts: kurze Wörter nur am Wortanfang, lange auch in Komposita; tippfehlertolerant nur mit fuzzy
+// Treffer eines Suchworts: am Wortanfang oder als Ende eines zusammengesetzten Worts („Rindergulasch“, „Erdnussbutter“,
+// auch mit Endung wie „-n“, „-en“) – nicht irgendwo mitten im Wort („lasch“ ≠ „Flasche“); tippfehlertolerant nur mit fuzzy
 // (Suche: erst ohne, damit „cola“ nicht „Collagen“/„Colgate“ findet)
+const compoundHead = (w, t) => { const i = w.lastIndexOf(t); return i >= 3 && w.length - i - t.length <= 2; };
 function hit(t, s, words, fuzzy = true) {
-  if (t.length < 5 ? s.includes(' ' + t) : s.includes(t)) return true;
+  if (s.includes(' ' + t) || (t.length >= 4 && words.some(w => compoundHead(w, t)))) return true;
   if (!fuzzy || t.length < 4) return false;
   const tol = t.length >= 8 ? 2 : 1;
   return words.some(w => w.length >= t.length - tol &&

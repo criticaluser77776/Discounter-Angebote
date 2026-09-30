@@ -768,7 +768,8 @@ function renderAll() {
   const byName = (a, b) => (a.name || '').localeCompare(b.name || '', 'de');
   // „Top-Angebote“: nur ab 30 % Rabatt, nach Rabatt sortiert (ohne Kategorie-Gliederung)
   // Suche im Reiter „Alle“: filtert nur die angezeigten Bereiche und Angebote
-  const base = S.q ? searchHits(S.q) : visible();
+  const sr = S.q ? searchResults(S.q) : null;
+  const base = S.q ? searchHits(S.q, sr) : visible();
   const list = S.allTop
     ? base.filter(o => disc(o) >= 30).sort((a, b) => disc(b) - disc(a) || byName(a, b))
     : base.slice().sort((a, b) => (rank.get(a.category) ?? 999) - (rank.get(b.category) ?? 999) || disc(b) - disc(a) || byName(a, b));
@@ -781,6 +782,7 @@ function renderAll() {
   const cats = S.allTop ? [] : [...new Set(list.map(o => o.category))];
   if (cats.length > 1) h += '<div class="chips scroll all-jump">' + cats.map(c =>
     `<button class="chip" data-act="allJump" data-c="${esc(c)}">${ICONS[c] || ''} ${esc(c)} <i>${cc[c]}</i></button>`).join('') + '</div>';
+  if (sr && list.length) h += tierNote(sr.level);
   if (!list.length) { view.innerHTML = h + `<p class="empty">Keine passenden Angebote${S.q ? ` zu „${esc(S.q)}“` : ''}.</p>`; return; }
   S.allOrder = cats;
   S.allStart = cats.map(c => list.findIndex(o => o.category === c));
@@ -801,30 +803,51 @@ function renderAll() {
 
 // Suchtreffer wie in der Suche oben: [Angebot, stark (Name/Marke/Gruppe) oder nur Beschreibung], ggf. Tippfehler-Suche
 function searchResults(q) {
-  const qt = qTokens(q), vis = visible();
-  let res = [], fuzzy = false;
-  for (const o of vis) {
-    const m = matchQuery(o, qt);
-    if (m) res.push([o, m.strong]);
+  const { res, level } = searchTiers(visible(), q);
+  return { res, fuzzy: level > 0, level };
+}
+const tierNote = level => level === 1 ? '<p class="sub">Keine genauen Treffer – Suchwort innerhalb von Namen:</p>'
+  : level === 2 ? '<p class="sub">Keine genauen Treffer – ähnliche Schreibweisen:</p>' : '';
+
+// Suche in Stufen – die nächste nur, wenn die vorige nichts findet:
+// 1. genau (Wortanfang, lange Wörter auch in Komposita), 2. Suchwort irgendwo im Namen (z.B. „lasch“ in „Gulasch“),
+// 3. Tippfehler (ab 5 Buchstaben): nur Name/Marke/Gruppe und nur die ähnlichsten Treffer (kleinster Abstand)
+function searchTiers(items, q, get = x => x) {
+  const qt = qTokens(q);
+  let res = [];
+  for (const x of items) { const m = matchQuery(get(x), qt); if (m) res.push([x, m.strong]); }
+  if (res.length || !qt.length) return { res, level: 0 };
+  for (const x of items) {
+    const o = get(x);
+    if (qt.every(t => o._ts.includes(t) || o._gs.includes(t))) res.push([x, true]);
   }
-  if (!res.length) {  // keine genauen Treffer: ähnliche Schreibweisen (Tippfehler)
-    fuzzy = true;
-    for (const o of vis) {
-      const m = matchQuery(o, qt, true);
-      if (m) res.push([o, m.strong]);
+  if (res.length) return { res, level: 1 };
+  let best = Infinity;
+  const scored = [];
+  for (const x of items) {
+    const o = get(x);
+    let sum = 0;
+    for (const t of qt) {
+      if (o._ts.includes(t) || o._gs.includes(t)) continue;
+      const tol = t.length >= 8 ? 2 : t.length >= 5 ? 1 : 0;  // kurze Eingaben (z.B. „goul“) nicht raten
+      let d = tol + 1;
+      for (const w of o._tw) d = Math.min(d, lev(t, w.slice(0, t.length), tol), lev(t, w, tol));
+      if (d > tol) { sum = Infinity; break; }
+      sum += d;
     }
+    if (sum < Infinity) { scored.push([x, sum]); best = Math.min(best, sum); }
   }
-  return { res, fuzzy };
+  return { res: scored.filter(([, d]) => d === best).map(([x]) => [x, true]), level: 2 };
 }
 // Treffer, die die Suche standardmäßig zeigt (ohne „nur in der Beschreibung“, falls es andere gibt)
-function searchHits(q) {
-  const { res } = searchResults(q);
+function searchHits(q, sr = searchResults(q)) {
+  const { res } = sr;
   const strong = res.filter(r => r[1]).map(r => r[0]);
   return strong.length ? strong : res.map(r => r[0]);
 }
 
 function renderSearch() {
-  const { res, fuzzy } = searchResults(S.q);
+  const { res, level } = searchResults(S.q);
   const strong = res.filter(r => r[1]).map(r => r[0]);
   const weakN = res.length - strong.length;
   let list = strong.length && !S.showWeak ? strong : res.map(r => r[0]);
@@ -855,7 +878,7 @@ function renderSearch() {
       brands.map(b => `<button class="chip ${S.qBrands.has(b.key) ? 'on' : ''}" data-act="qBrand" data-b="${esc(b.key)}">${esc(b.name)} <i>${b.n}</i></button>`).join('') +
       '</div>';
   }
-  if (fuzzy && res.length) h += '<p class="sub">Keine genauen Treffer – ähnliche Schreibweisen:</p>';
+  if (res.length) h += tierNote(level);
   if (weakN && strong.length && !S.showWeak) {
     h += `<div class="chips"><button class="btn small" data-act="showWeak">+ ${weakN} Treffer nur in der Beschreibung</button></div>`;
   }
@@ -1066,9 +1089,10 @@ async function renderFavSearch() {
     if (route()[0] !== 'add' || !S.q) return;
   }
   const qt = qTokens(S.q);
-  let hits = S.catalog.filter(e => matchQuery(catOffer(e), qt)?.strong);
-  const fuzzy = !hits.length;
-  if (fuzzy) hits = S.catalog.filter(e => matchQuery(catOffer(e), qt, true));
+  const tiers = searchTiers(S.catalog, S.q, catOffer);
+  const strongHits = tiers.res.filter(r => r[1]).map(r => r[0]);
+  let hits = strongHits.length ? strongHits : tiers.res.map(r => r[0]);
+
   const live = new Set(visible().map(o => o.product_key));
   const [fc, fg] = (S.qFacet || '').split('\u0001');
   const inFacet = e => !S.qFacet || (e.category === fc && (!fg || e.group === fg));
@@ -1109,7 +1133,7 @@ async function renderFavSearch() {
   const prods = hits.filter(inFacet).filter(e => !S.qBrands.size || S.qBrands.has(e.brand_key))
     .sort((a, b) => live.has(b.product_key) - live.has(a.product_key) || (a.name || '').localeCompare(b.name || '', 'de'));
   h += `<div class="chips-sep"><span>Einzelne Produkte${prods.length ? ` (${prods.length})` : ''}</span></div>`;
-  if (fuzzy && prods.length) h += '<p class="sub">Keine genauen Treffer – ähnliche Schreibweisen:</p>';
+  if (prods.length) h += tierNote(tiers.level);
   h += prods.length ? '<div class="fs-prods">' + prods.slice(0, 40).map(e => {
     const f = catalogProductFav(e), on = !!findFav(f);
     return `<button class="fs-prod ${on ? 'on' : ''}" data-act="fsProduct" data-pk="${esc(e.product_key)}">
@@ -2652,7 +2676,7 @@ const GUIDE = [
       ['Gliederung', 'die Angebote stehen nach Kategorien geordnet, innerhalb nach Rabatt. Die Chips oben (z.B. „🧀 Käse“) springen zur jeweiligen Kategorie.'],
       ['🔥 Top-Angebote', 'zeigt nur Angebote ab 30 % Rabatt, nach Rabatt sortiert. Nochmal tippen = zurück zu allen.'],
       ['Suche je Reiter', 'in <b>Kategorien</b> findest du aktuelle Angebote mit Eingrenzung nach Produktgruppe und Marke, der Reiter bleibt Kategorien. In <b>Alle</b> filtert die Suche nur die Liste darunter (Gliederung und Top-Angebote bleiben). Von den <b>Favoriten</b> aus sucht sie im ganzen Katalog – siehe Favoriten.'],
-      ['Suchbegriffe', 'z.B. „Butter“, „Jacobs Kaffee“. Gesucht wird zuerst genau (Wortanfang), Tippfehler nur, wenn sonst nichts passt. Die Treffer lassen sich nach Produktgruppe und Marke eingrenzen und nach Grundpreis, Preis oder Rabatt sortieren; Treffer nur in der Beschreibung lassen sich zuschalten.'],
+      ['Suchbegriffe', 'z.B. „Butter“, „Jacobs Kaffee“. Gesucht wird zuerst genau: am Wortanfang oder als Wortende („Rindergulasch“). Erst wenn das nichts findet, auch mitten im Wort, danach ähnliche Schreibweisen (ab 5 Buchstaben, nur die ähnlichsten). Die Treffer lassen sich nach Produktgruppe und Marke eingrenzen und nach Grundpreis, Preis oder Rabatt sortieren; Treffer nur in der Beschreibung lassen sich zuschalten.'],
       ['Händler-Chips', 'die farbigen Chips oben: markierte Händler werden angezeigt, ohne Markierung alle.'],
       ['Angebot antippen', 'öffnet die Details: Preise mit/ohne App, Normalpreis, Gültigkeit, Märkte, Preisverlauf und Preis-Leiste.'],
       ['👉 Nach rechts wischen', 'obere Hälfte der Karte = auf den Zettel, untere Hälfte = ❗ wichtig auf den Zettel. Die Zone unter dem Finger leuchtet.'],
