@@ -621,7 +621,7 @@ function card(o, opts = {}) {
 function offerList(list, opts = {}) {
   if (!list.length) return '<p class="empty">Keine passenden Angebote.</p>';
   const limit = opts.limit ?? S.limit;
-  const headers = (opts.sort ?? S.sort) === 'unit';
+  const headers = opts.heads !== false && (opts.sort ?? S.sort) === 'unit';
   const units = new Set(list.map(o => o.eu ? o.unit : '-'));
   let h = '<div class="list">', last = null;
   for (const o of list.slice(0, limit)) {
@@ -746,7 +746,7 @@ function renderCategory(cat, group) {
       <button class="btn" data-act="groupWish" data-c="${esc(cat)}" data-g="${esc(group)}">＋ Zettel</button>
       <a class="btn" href="#/add/${enc(cat)}/${enc(group)}">Marken & Produkte ›</a></div>`;
   }
-  h += sortbar(list.length) + offerList(sortOffers(list));
+  h += sortbar(list.length) + offerList(sortOffers(list), { heads: false });  // Kategorien: ohne Zwischenüberschriften je Einheit
   view.innerHTML = h;
 }
 
