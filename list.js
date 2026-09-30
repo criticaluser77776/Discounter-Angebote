@@ -1348,7 +1348,7 @@ function liShowOffers(it) {
     if (!fg || e.button > 0 || e.target.closest('button, input')) return;
     sw = { fg, row: fg.parentElement, x: e.clientX, y: e.clientY, dx: 0, active: false, id: e.pointerId };
     const it = fg.parentElement.dataset.lid && R.item.get(fg.parentElement.dataset.lid);
-    if (it && !it.done) {
+    if (it && !it.done && !liSimple()) {  // nur in der Ansicht „Details“
       const s0 = sw;
       s0.lp = setTimeout(() => {
         if (sw !== s0 || s0.active) return;
@@ -1359,7 +1359,7 @@ function liShowOffers(it) {
     }
   });
   // Kontextmenü/Textauswahl beim langen Drücken auf dem Zettel verhindern
-  view.addEventListener('contextmenu', e => { if (e.target.closest('.li-row[data-lid]')) e.preventDefault(); });
+  view.addEventListener('contextmenu', e => { if (!liSimple() && e.target.closest('.li-row[data-lid]')) e.preventDefault(); });
   view.addEventListener('pointermove', e => {
     if (!sw || e.pointerId !== sw.id) return;
     const dx = e.clientX - sw.x, dy = e.clientY - sw.y;
