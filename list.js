@@ -1159,7 +1159,7 @@ Object.assign(onClick, {
     liAddText([...parts, (last.prio ? '!' : '') + q + el.dataset.name].join(' und '));
     LI.draft = '';
     const inp = $('#liIn');
-    if (inp) { inp.value = ''; inp.focus(); }
+    if (inp) { inp.value = ''; inp.blur(); }  // Vorschlag gewählt: Tastatur schließen
     $('#liSug').hidden = true;
     liRefresh();
   },
@@ -1172,7 +1172,7 @@ Object.assign(onClick, {
     else Li.addWish(f, favLabel(f).title, { ...last, prio: last.prio || liTakePrio() });
     LI.draft = '';
     const inp = $('#liIn');
-    if (inp) { inp.value = ''; inp.focus(); }
+    if (inp) { inp.value = ''; inp.blur(); }  // Vorschlag gewählt: Tastatur schließen
     $('#liSug').hidden = true;
     liRefresh();
   },
@@ -1192,7 +1192,7 @@ Object.assign(onClick, {
     Li.addWish({ type: 'group', category: c, group: g, brands: [], brandOnly: false }, g, { prio: liTakePrio() });
     LI.draft = '';
     const inp = $('#liIn');
-    if (inp) inp.value = '';
+    if (inp) { inp.value = ''; inp.blur(); }
     $('#liSug').hidden = true;
     liRefresh();
   },
