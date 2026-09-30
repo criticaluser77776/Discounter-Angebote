@@ -614,8 +614,10 @@ function liRow(it, best) {
       `${o.app ? ` 📱 ${esc(o.app)}` : ''}${o.unit_price ? ` · ${fmt(o.unit_price)} €/${esc(o.unit)}` : ''}` +
       (o.valid_to ? (expired ? ' · <span class="err">abgelaufen</span>' : ` · bis ${dshort(o.valid_to)}`) : ''));
   } else if (it.kind === 'wish') {
-    sub.push(best ? `<span class="rt" style="--c:${S.retailers[best.retailer]?.color}">${esc(rname(best))}</span> ${best.ea ? '📱 ' : ''}` +
-      `${esc(best.brand)} ${esc(best.name)} · ${esc(metricLine(best, it.fav))}` : 'Wunsch · derzeit kein Angebot');
+    // wie bei getippten Einträgen: allgemeiner Hinweis mit günstigstem Preis und Anzahl (Details per langem Drücken)
+    const n = best ? liOffersOf(it).length : 0;
+    sub.push(best ? `<span class="li-hint">💡 im Angebot: ${esc(rname(best))} ${best.ea ? '📱 ' : ''}${esc(metricLine(best, it.fav))}${n > 1 ? ` · ${n} Angebote` : ''}</span>`
+      : 'Wunsch · derzeit kein Angebot');
   } else if (!it.done && it.price == null) {
     const m = liMatches(it.name, catInfo(it.cat).id);
     const n = m.length ? liSearchOffers(it).length : 0;  // Anzahl wie Suche / langes Drücken
