@@ -103,7 +103,7 @@ function aggregate(list) {
   for (const v of list) {
     const k = [FAMILY[v.retailer] || v.retailer, v.brand_key, norm(v.title), v.valid_from, v.valid_to].join('|');
     let lead = by.get(k);
-    if (!lead) { lead = { ...v, variants: [] }; by.set(k, lead); out.push(lead); }
+    if (!lead) { lead = { ...v, key: v.id, variants: [] }; by.set(k, lead); out.push(lead); }
     lead.variants.push(v);
   }
   return out;
@@ -428,7 +428,7 @@ function favLabelAuto(f) {
   return { icon: '★', title: '?', sub: '' };
 }
 
-function saveFavs() { save('favs', S.favs); liFavsPush(S.favs); updateBadges(); }
+function saveFavs() { save('favs', S.favs); liFavsPush(S.favs); updateBadges(); pushCtxSave(); }
 const findFav = f => S.favs.find(x => favSig(x) === favSig(f));
 
 function toggleFav(f, labelForToast) {
@@ -494,15 +494,54 @@ function favRows(vis) {
 
 function freshCount(vis) {
   const ids = new Set();
-  for (const { m } of favRows(vis)) for (const o of m) if (!S.seen.has(o.id)) ids.add(o.id);
+  for (const { m } of favRows(vis)) for (const o of m) if (!S.seen.has(o.key)) ids.add(o.key);
   return ids.size;
 }
 
 function markSeen(ids) {
-  const current = new Set(S.offers.map(o => o.id));
+  const current = new Set(S.offers.map(o => o.key));
   S.seen = new Set([...S.seen, ...ids].filter(id => current.has(id)));
   save('seen', [...S.seen]);
   updateBadges();
+  pushCtxSave();
+}
+
+/* ---------- Push: Benachrichtigung bei neuen Favoriten-Angeboten (Service Worker zählt selbst) ---------- */
+
+const pushAvailable = () => Cloud.enabled && !!(window.APP_CONFIG || {}).vapidKey && 'serviceWorker' in navigator &&
+  'PushManager' in window && 'Notification' in window;
+// Stand für den Service Worker (kein localStorage dort): Favoriten, gesehene Angebote, Filter, Gebiet, Zugang
+async function pushCtxSave() {
+  if (!pushAvailable() || !S.loaded || !load('push', false)) return;
+  try {
+    const ctx = { favs: S.favs, seen: [...S.seen], f: S.f, grpRet: S.grpRet || null, area: S.area ? [...S.area] : null,
+      cloud: Cloud.pushCtx(), at: Date.now() };
+    const c = await caches.open('ap-ctx');
+    await c.put('https://cache.local/ctx', new Response(JSON.stringify(ctx)));
+  } catch { /* kein Cache – dann eben ohne Zählung */ }
+}
+async function pushClearBadge() {
+  try { await navigator.clearAppBadge?.(); } catch { /* egal */ }
+  try {
+    const reg = await navigator.serviceWorker?.getRegistration();
+    (await reg?.getNotifications({ tag: 'favs' }) || []).forEach(n => n.close());
+  } catch { /* egal */ }
+}
+const b64u = s => Uint8Array.from(atob(s.replace(/-/g, '+').replace(/_/g, '/') + '='.repeat((4 - s.length % 4) % 4)), c => c.charCodeAt(0));
+async function pushEnable(on) {
+  const reg = await navigator.serviceWorker.ready;
+  if (on) {
+    if (await Notification.requestPermission() !== 'granted') throw new Error('Benachrichtigungen sind im Browser blockiert');
+    const sub = await reg.pushManager.getSubscription() ||
+      await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64u(window.APP_CONFIG.vapidKey) });
+    await Cloud.pushSubscribe(sub.toJSON());
+    save('push', true);
+    await pushCtxSave();
+  } else {
+    save('push', false);
+    await Cloud.pushUnsubscribe().catch(() => {});
+    await (await reg.pushManager.getSubscription())?.unsubscribe();
+  }
 }
 
 /* ---------- Einkaufszettel: siehe list.js (Li.hasOffer, Li.toggleOffer, Li.addWish) ---------- */
@@ -825,7 +864,7 @@ function renderFavs() {
     <div class="seg"><button class="${own ? '' : 'on'}" data-act="favSort" data-s="offers">Angebote zuerst</button>
     <button class="${own ? 'on' : ''}" data-act="favSort" data-s="own">Eigene Reihenfolge</button></div></div>`;
   const seenNow = [];
-  const isNew = o => !S.seen.has(o.id);
+  const isNew = o => !S.seen.has(o.key);
   for (const { f, m } of rows) {
     const pack = byPack(f);
     // ältere Favoriten: Preisalarm ohne gespeicherte Einheit -> vorherrschende Einheit der Treffer übernehmen
@@ -865,7 +904,7 @@ function renderFavs() {
     }
     if (open) {
       h += offerList(m, { limit: 200, sort: metricSort(f), metric: metricSort(f), isNew });
-      m.forEach(o => seenNow.push(o.id));
+      m.forEach(o => seenNow.push(o.key));
     }
     h += '</section>';
   }
@@ -1154,6 +1193,7 @@ function filterPanel() {
 // persönliche Filter gespeichert: Preise neu wählen, Mehr-Seite neu zeichnen (Scrollposition bleibt)
 function filtersChanged() {
   save('filters', S.f);
+  pushCtxSave();
   applyEff();
   updateBadges();
   const y = window.scrollY;
@@ -1176,6 +1216,9 @@ function morePanel(id) {
         ${THEMES.map(([k, l]) => `<option value="${k}" ${f.theme === k ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
       <label class="line">Start-Tab <select data-set="startTab">
         ${START_TABS.map(([k, l]) => `<option value="${k}" ${(f.startTab || '') === k ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
+      ${pushAvailable() ? `<label class="line switch"><input type="checkbox" data-push ${load('push', false) && Notification.permission === 'granted' ? 'checked' : ''}>
+        🔔 Benachrichtigung bei neuen Favoriten-Angeboten</label>
+        <p class="muted" style="margin:0 0 4px;font-size:.85rem">Nach dem Abruf (5 und 14 Uhr) zählt die App neue Angebote deiner Favoriten und zeigt sie als Hinweis bzw. Zahl am App-Symbol.</p>` : ''}
     </div>`;
   if (id === 'daten') {
     const counts = countBy(S.offers.flatMap(o => o.variants), o => o.retailer);
@@ -1620,6 +1663,11 @@ function applyTheme() {
   else document.documentElement.dataset.theme = S.f.theme;
 }
 
+// App geht in den Hintergrund: aktuellen Stand für Push-Zählung sichern; zurück im Vordergrund: Zähler am Symbol löschen
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) pushCtxSave(); else if (S.loaded) pushClearBadge();
+});
+
 // Hinweisleiste; optional mit Aktion (z.B. { label: 'Rückgängig', fn }), dann länger sichtbar
 function toast(msg, action) {
   const t = $('#toast');
@@ -2022,6 +2070,14 @@ document.addEventListener('change', e => {
     areaRefresh();
     return;
   }
+  if (el.hasAttribute('data-push')) {
+    el.disabled = true;
+    pushEnable(el.checked)
+      .then(() => toast(el.checked ? 'Benachrichtigung eingeschaltet' : 'Benachrichtigung ausgeschaltet'))
+      .catch(err => { el.checked = false; save('push', false); toast(`Nicht möglich: ${err.message}`); })
+      .finally(() => { el.disabled = false; });
+    return;
+  }
   if (el.dataset.fmarket) {
     const k = el.dataset.fmarket, cur = (S.f.markets[k] || []).filter(m => m !== NO_MARKET);
     S.f.markets = { ...S.f.markets, [k]: el.checked ? [...cur, el.value] : cur.filter(m => m !== el.value) };
@@ -2168,6 +2224,8 @@ async function loadData() {
     renderChips();
     render();
     prefetchCatalog();
+    pushClearBadge();
+    pushCtxSave();
   } catch (err) {
     if (err instanceof LoginNeeded) { showLogin(err.message); return; }
     view.innerHTML = `<p class="empty">Angebote konnten nicht geladen werden.<br><small>${esc(err.message)}</small><br><br>

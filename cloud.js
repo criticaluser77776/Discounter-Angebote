@@ -134,6 +134,11 @@ const Cloud = (() => {
     listInvites: () => rest('rpc/app_list_invites', { method: 'POST', body: {} }),
     adminMember: (id, action, name) => rest('rpc/admin_member', { method: 'POST',
       body: { p_id: id, p_action: action, p_name: name ?? null }, prefer: 'return=minimal' }),
+    // Web-Push: Abo dieses Geräts (Zählung neuer Favoriten-Angebote macht der Service Worker)
+    pushSubscribe: sub => rest('rpc/push_subscribe', { method: 'POST', prefer: 'return=minimal',
+      body: { p_endpoint: sub.endpoint, p_p256dh: sub.keys.p256dh, p_auth: sub.keys.auth } }),
+    pushUnsubscribe: () => rest('rpc/push_unsubscribe', { method: 'POST', prefer: 'return=minimal', body: {} }),
+    pushCtx: () => ({ url, key, code: access?.code || '', device }),
     sendFeedback: (kind, text) => rest('rpc/send_feedback', { method: 'POST', prefer: 'return=minimal',
       body: { p_kind: kind, p_text: text, p_version: String(window.APP_VERSION?.number || '') } }),
     async adminGroupName(name) {
