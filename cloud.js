@@ -134,6 +134,8 @@ const Cloud = (() => {
     listInvites: () => rest('rpc/app_list_invites', { method: 'POST', body: {} }),
     adminMember: (id, action, name) => rest('rpc/admin_member', { method: 'POST',
       body: { p_id: id, p_action: action, p_name: name ?? null }, prefer: 'return=minimal' }),
+    sendFeedback: (kind, text) => rest('rpc/send_feedback', { method: 'POST', prefer: 'return=minimal',
+      body: { p_kind: kind, p_text: text, p_version: String(window.APP_VERSION?.number || '') } }),
     async adminGroupName(name) {
       await rest('rpc/admin_group_name', { method: 'POST', body: { p_name: name }, prefer: 'return=minimal' });
       await touch(true);

@@ -1103,8 +1103,10 @@ const MORE_SECTIONS = [
   { id: 'filter', ico: '🔎', title: 'Filter' },
   { id: 'darstellung', ico: '🎨', title: 'Darstellung' },
   { id: 'daten', ico: '📊', title: 'Daten & Abruf' },
+  { id: 'feedback', ico: '💬', title: 'Feedback', show: () => Cloud.enabled },
   { id: 'info', ico: 'ℹ️', title: 'Über die App' },
 ];
+const FB_KINDS = [['bug', '🐞 Fehler'], ['idee', '💡 Idee'], ['sonstiges', '💬 Sonstiges']];
 const FILTER_OPTS = [
   ['hideApp', 'App-/Kundenkartenpreise ignorieren (Normalpreis verwenden)'],
   ['hideOnline', 'Nur-online-Angebote ausblenden'],
@@ -1126,6 +1128,7 @@ function moreSummary(id) {
   if (id === 'filter') { const n = FILTER_OPTS.filter(([k]) => f[k]).length; return n ? `${n} aktiv` : 'keine'; }
   if (id === 'darstellung') return `${(THEMES.find(x => x[0] === f.theme) || THEMES[0])[1]} · Start: ${(START_TABS.find(x => x[0] === (f.startTab || '')) || START_TABS[0])[1]}`;
   if (id === 'daten') return `${S.offers.length} Angebote · Stand ${S.generated ? new Date(S.generated).toLocaleString('de-DE', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '–'}`;
+  if (id === 'feedback') return 'Fehler melden, Ideen und Wünsche';
   if (id === 'info') return `Kurzanleitung · ${window.APP_VERSION ? 'Version ' + window.APP_VERSION.number : 'Installieren'}`;
   return '';
 }
@@ -1156,6 +1159,16 @@ function morePanel(id) {
       <p class="muted" style="margin:0 0 8px;font-size:.85rem">${Object.entries(S.retailers).map(([k, r]) => `${esc(r.name)} ${counts[k] || 0}`).join(' · ')}</p>
       ${DATA.server ? '' : '<p class="muted" style="margin:0 0 8px;font-size:.85rem">Die Angebote werden täglich um 5 und 14 Uhr automatisch abgerufen.</p>'}
       <div id="status"><p class="muted">Status wird geladen …</p></div>
+    </div>`;
+  }
+  if (id === 'feedback') {
+    const d = load('fbDraft', { kind: 'bug', text: '' });
+    return `<div class="panel">
+      <p class="muted" style="margin:0 0 8px;font-size:.85rem">Was klappt nicht, was fehlt? Der Text geht direkt an den Entwickler (nicht an die Gruppe).</p>
+      <div class="chips wrap" style="margin-bottom:8px">${FB_KINDS.map(([k, l]) =>
+        `<button class="chip ${d.kind === k ? 'on' : ''}" data-act="fbKind" data-k="${k}">${l}</button>`).join('')}</div>
+      <textarea id="fbText" class="fb-text" maxlength="4000" rows="6" placeholder="${d.kind === 'bug' ? 'Was ist passiert? Wo in der App?' : 'Beschreibe kurz deine Idee …'}">${esc(d.text)}</textarea>
+      <div style="display:flex;justify-content:flex-end;margin-top:8px"><button class="btn primary" data-act="fbSend">Senden</button></div>
     </div>`;
   }
   if (id === 'info') return `<div class="panel"><h3>Kurzanleitung</h3>${introHtml()}
@@ -1793,6 +1806,26 @@ const onClick = {
     S.loaded = false;
     showLogin();
   },
+  fbKind: el => {
+    save('fbDraft', { ...load('fbDraft', { text: '' }), kind: el.dataset.k });
+    document.querySelectorAll('[data-act="fbKind"]').forEach(b => b.classList.toggle('on', b === el));
+    const t = $('#fbText');
+    if (t) t.placeholder = el.dataset.k === 'bug' ? 'Was ist passiert? Wo in der App?' : 'Beschreibe kurz deine Idee …';
+  },
+  fbSend: async el => {
+    const d = load('fbDraft', { kind: 'bug', text: '' }), text = ($('#fbText')?.value || '').trim();
+    if (!text) { toast('Bitte erst etwas eingeben'); return; }
+    el.disabled = true;
+    try {
+      await Cloud.sendFeedback(d.kind, text);
+      save('fbDraft', { kind: d.kind, text: '' });
+      $('#fbText').value = '';
+      toast('Danke! Feedback ist angekommen.');
+    } catch (err) {
+      toast(`Nicht gesendet (${err.message}) – der Text bleibt gespeichert`);
+    }
+    el.disabled = false;
+  },
   refresh: async () => {
     await DATA.refresh();
     S.wasRunning = true;
@@ -1963,6 +1996,7 @@ document.addEventListener('change', e => {
 });
 
 document.addEventListener('input', e => {
+  if (e.target.id === 'fbText') save('fbDraft', { ...load('fbDraft', { kind: 'bug' }), text: e.target.value });
   if (e.target.id === 'pickQ') {
     S.pickQ = e.target.value;
     clearTimeout(S.pickTimer);
