@@ -2626,23 +2626,37 @@ const guideHtml = () => `<div class="guide">${GUIDE.filter(g => Cloud.enabled ||
 // Einführung: je Seite ein Bereich mit den wichtigsten Punkten
 // Beispiel-Ausschnitte für den Rundgang (echte Bausteine der App, nicht antippbar)
 const TOUR_MOCK = {
-  kat: `<div class="tour-mock"><div class="tm-cap">Beispiel: Kategorie „Süßes & Snacks“</div>
-    <div class="chips wrap pick"><span class="chip">Alle <i>263</i></span><span class="chip">Riegel <i>29</i></span>
-      <span class="chip on">Schokolade <i>51</i></span><span class="chip">Pralinen <i>12</i></span></div>
+  // Produktgruppe wählen, Marke markieren, merken – Tipp-Punkte zeigen, was gerade angetippt wird
+  kat: () => `<div class="tour-mock tm-kat"><div class="tm-cap">Beispiel: Kategorie „Süßes & Snacks“</div>
+    <div class="chips wrap pick"><span class="chip tk-alle">Alle <i>263</i></span><span class="chip">Riegel <i>29</i></span>
+      <span class="chip tk-s1 tm-tap t1">Schokolade <i>51</i></span><span class="chip">Pralinen <i>12</i></span></div>
     <div class="chips-sep"><span>Marken</span></div>
-    <div class="chips wrap pick"><span class="chip">Nur Markenprodukte</span><span class="chip on">Milka <i>9</i></span>
+    <div class="chips wrap pick"><span class="chip">Nur Markenprodukte</span><span class="chip tk-s2 tm-tap t2">Milka <i>9</i></span>
       <span class="chip">Lindt <i>1</i></span><span class="chip">Ritter Sport <i>3</i></span></div>
-    <div class="chips wrap grp-acts"><span class="btn act-fav">☆ Auswahl merken</span><span class="btn act-list">＋ Zettel</span></div></div>`,
-  alle: `<div class="tour-mock"><div class="tm-cap">Beispiel: Sortierung umschalten</div>
-    <div class="sortbar"><span>120 Angebote</span><div class="seg"><button class="on">Grundpreis</button><button>Preis</button><button>Rabatt</button></div></div></div>`,
-  fav: `<div class="tour-mock"><div class="tm-cap">Beispiel: Reihenfolge der Favoriten</div>
-    <div class="sortbar"><span>4 Favoriten</span><div class="seg"><button class="on">Angebote zuerst</button><button>Eigene Reihenfolge</button></div></div></div>`,
-  zettel: `<div class="tour-mock"><div class="tm-cap">Beispiel: Ansicht (unter der Eingabe) und Sortierung (über der Liste)</div>
-    <div class="sortbar"><span>Ansicht</span><div class="seg"><button>Einfach</button><button class="on">Details</button></div></div>
-    <div class="sortbar"><span>Sortierung</span><div class="seg"><button class="on">Eingabe</button><button>A–Z</button><button>Kategorie</button></div></div></div>`,
-  mehr: `<div class="tour-mock"><div class="tm-cap">Beispiel: Untermenüs unter „Mehr“</div>
+    <div class="chips wrap grp-acts"><span class="btn act-fav tk-fav tm-tap t3"><span class="tk-a">☆ Auswahl merken</span><span class="tk-b">★ Gemerkt</span></span>
+      <span class="btn act-list">＋ Zettel</span></div></div>`,
+  // Sortierung umschalten: die Reihenfolge der Angebote ändert sich mit
+  alle: () => `<div class="tour-mock tm-alle"><div class="tm-cap">Beispiel: Sortierung umschalten</div>
+    <div class="sortbar"><span>3 Angebote</span><div class="seg"><button class="ta-1">Grundpreis</button><button class="ta-2">Preis</button><button class="ta-3">Rabatt</button></div></div>
+    <div class="ta-list">${[['ta-a', '🧀', 'Gouda am Stück', '1,49 €', '5,96 €/kg', '−20 %'], ['ta-b', '🧀', 'Frischkäse', '0,99 €', '9,90 €/kg', '−40 %'],
+      ['ta-c', '🧀', 'Käse XXL', '2,49 €', '4,15 €/kg', '−10 %']].map(([c, i, n, p, u, d]) =>
+      `<div class="ta-row ${c}"><span>${i}</span><b>${n}</b><span class="ta-u">${u}</span><span class="ta-p">${p}</span><span class="ta-d">${d}</span></div>`).join('')}</div></div>`,
+  // Favorit mit Preis-Leiste; antippen klappt die Angebote auf
+  fav: () => `<div class="tour-mock tm-fav"><div class="tm-cap">Beispiel: Favorit aufklappen</div>
+    <div class="tf-box"><div class="tf-h tm-tap t1"><span style="font-size:18px">🧈</span><span class="tf-t"><b>Butter <span class="new">2 neu</span></b><small>Milch & Molkerei · 3 Angebote</small></span>
+      <b class="tf-best">ab 5,16 €/kg</b></div>
+      ${priceBar({ n: 24, min: 4.76, avg: 6.4, max: 8.9, u: 'kg', cur: 5.16 })}
+      <div class="tf-open">${[['Kerrygold Butter', 'Lidl', '5,16 €/kg'], ['Meggle Butter', 'Edeka', '5,96 €/kg']].map(([n, r, p]) =>
+        `<div class="tf-row"><b>${n}</b><small>${r}</small><span>${p}</span></div>`).join('')}</div></div></div>`,
+  // Ansicht umschalten: in „Details“ erscheint der Angebots-Hinweis
+  zettel: () => `<div class="tour-mock tm-zettel"><div class="tm-cap">Beispiel: Ansicht „Einfach“ ↔ „Details“</div>
+    <div class="sortbar"><span>Ansicht</span><div class="seg"><button class="tz-1">Einfach</button><button class="tz-2 tm-tap t1">Details</button></div></div>
+    <div class="tz-list">${[['🥛', 'Milch', '2 l', 'Aldi 0,99 €/l · 5 Angebote'], ['🧈', 'Butter', '', 'Lidl 5,16 €/kg · 14 Angebote']].map(([i, n, q, h]) =>
+      `<div class="tz-row"><span>${i}</span><span class="tz-t"><b>${n}</b><small class="tz-h">💡 im Angebot: ${h}</small></span><span class="tz-q">${q}</span><span class="tz-c">✓</span></div>`).join('')}</div></div>`,
+  // Untermenüs nacheinander antippen
+  mehr: () => `<div class="tour-mock tm-mehr"><div class="tm-cap">Beispiel: Untermenüs unter „Mehr“</div>
     <nav class="more-menu">${[['🔎', 'Filter', 'Apps, Kategorien, Märkte'], ['🎨', 'Darstellung', 'Farbschema · Start-Tab · 🔔'],
-      ['ℹ️', 'Über die App', 'Anleitung je Reiter']].map(([i, t, d]) => `<span class="more-item"><span class="mi-ico">${i}</span>
+      ['ℹ️', 'Über die App', 'Anleitung je Reiter']].map(([i, t, d], k) => `<span class="more-item tm-tap tmm t${k + 1}"><span class="mi-ico">${i}</span>
       <span class="mi-txt"><b>${t}</b><small>${d}</small></span><span class="mi-go">›</span></span>`).join('')}</nav></div>`,
 };
 
@@ -2684,7 +2698,7 @@ const tourHtml = t => `<div class="tour-tabs">${TOUR_TABS.map(([i, l], k) => `<s
   <h2>${t.ico} ${t.title}</h2><p>${t.text}</p>
   ${t.demo ? `<div class="tour-demo"><div class="td-z">＋ Auf den Zettel</div><div class="td-w">❗ Wichtig</div>
     <div class="td-card"><span class="td-th">🧈</span><span><b>Markenbutter</b><small>Beispiel · 250 g</small></span><b class="td-p">5,16 €/kg</b></div></div>` : ''}
-  ${t.mock ? TOUR_MOCK[t.mock] : ''}
+  ${t.mock ? TOUR_MOCK[t.mock]() : ''}
   <ul class="tour-pts">${t.points.map(x => `<li>${x}</li>`).join('')}</ul>`;
 
 const INTRO = [

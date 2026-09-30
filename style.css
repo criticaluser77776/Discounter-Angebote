@@ -696,3 +696,80 @@ details.mk summary .muted { font-size: .85rem; margin-left: auto; }
 .tour-mock .chips, .tour-mock .chips-sep { padding-left: 10px; padding-right: 10px; }
 .tour-mock .sortbar { margin: 4px 10px; padding: 0; }
 .tour-mock .more-menu { margin: 4px 10px 0; }
+/* Rundgang: animierte Beispiele (Zyklus 7 s, danach Wiederholung; ohne Bewegung bei „weniger Animation“) */
+.tour-mock { --tc: 7s; }
+.tm-tap { position: relative; }
+.tm-tap::after { content: ''; position: absolute; left: 50%; top: 50%; width: 26px; height: 26px; margin: -13px 0 0 -13px;
+  border-radius: 50%; background: color-mix(in srgb, var(--text) 25%, transparent); opacity: 0; pointer-events: none;
+  animation: tmTap var(--tc) infinite; }
+.tm-tap.t2::after { animation-name: tmTap2; } .tm-tap.t3::after { animation-name: tmTap3; }
+@keyframes tmTap { 0%, 12% { opacity: 0; transform: scale(.4); } 15% { opacity: 1; transform: scale(1); } 22%, 100% { opacity: 0; transform: scale(1.6); } }
+@keyframes tmTap2 { 0%, 37% { opacity: 0; transform: scale(.4); } 40% { opacity: 1; transform: scale(1); } 47%, 100% { opacity: 0; transform: scale(1.6); } }
+@keyframes tmTap3 { 0%, 62% { opacity: 0; transform: scale(.4); } 65% { opacity: 1; transform: scale(1); } 72%, 100% { opacity: 0; transform: scale(1.6); } }
+/* Kategorien: Schokolade, dann Milka, dann merken */
+.tm-kat .tk-alle { animation: tkOff var(--tc) infinite; }
+.tm-kat .tk-s1 { animation: tkOn1 var(--tc) infinite; }
+.tm-kat .tk-s2 { animation: tkOn2 var(--tc) infinite; }
+@keyframes tkOff { 0%, 15% { background: var(--accent); color: var(--accent-text); border-color: var(--accent); } 17%, 94% { background: var(--surface); color: var(--text); border-color: var(--line); } 97%, 100% { background: var(--accent); color: var(--accent-text); border-color: var(--accent); } }
+@keyframes tkOn1 { 0%, 15% { background: var(--surface); color: var(--text); border-color: var(--line); } 17%, 94% { background: var(--accent); color: var(--accent-text); border-color: var(--accent); } 97%, 100% { background: var(--surface); color: var(--text); border-color: var(--line); } }
+@keyframes tkOn2 { 0%, 40% { background: var(--surface); color: var(--text); border-color: var(--line); } 42%, 94% { background: var(--accent); color: var(--accent-text); border-color: var(--accent); } 97%, 100% { background: var(--surface); color: var(--text); border-color: var(--line); } }
+.tm-kat .tk-fav { display: inline-grid; } .tm-kat .tk-fav > span { grid-area: 1 / 1; }
+.tm-kat .tk-fav { animation: tkFav var(--tc) infinite; }
+.tm-kat .tk-a { animation: tkShowA var(--tc) infinite; } .tm-kat .tk-b { animation: tkShowB var(--tc) infinite; }
+@keyframes tkFav { 0%, 65% { background: color-mix(in srgb, var(--star) 12%, var(--surface)); color: var(--amber); } 67%, 94% { background: var(--star); color: #1b1300; } 97%, 100% { background: color-mix(in srgb, var(--star) 12%, var(--surface)); color: var(--amber); } }
+@keyframes tkShowA { 0%, 65% { opacity: 1; } 67%, 94% { opacity: 0; } 97%, 100% { opacity: 1; } }
+@keyframes tkShowB { 0%, 65% { opacity: 0; } 67%, 94% { opacity: 1; } 97%, 100% { opacity: 0; } }
+/* Alle: Sortierung Grundpreis -> Preis -> Rabatt, Zeilen tauschen die Plätze */
+.tm-alle .seg button { animation: taSeg var(--tc) infinite; }
+.tm-alle .seg .ta-2 { animation-name: taSeg2; } .tm-alle .seg .ta-3 { animation-name: taSeg3; }
+@keyframes taSeg { 0%, 31% { background: var(--surface); color: var(--text); font-weight: 600; } 33%, 100% { background: none; color: var(--muted); font-weight: 400; } }
+@keyframes taSeg2 { 0%, 31% { background: none; color: var(--muted); font-weight: 400; } 33%, 64% { background: var(--surface); color: var(--text); font-weight: 600; } 66%, 100% { background: none; color: var(--muted); font-weight: 400; } }
+@keyframes taSeg3 { 0%, 64% { background: none; color: var(--muted); font-weight: 400; } 66%, 100% { background: var(--surface); color: var(--text); font-weight: 600; } }
+.ta-list { position: relative; height: 96px; margin: 6px 10px 0; }
+.ta-row { position: absolute; left: 0; right: 0; height: 28px; display: flex; align-items: center; gap: 8px; padding: 0 8px;
+  background: var(--surface); border-radius: 8px; box-shadow: var(--shadow); font-size: .82rem; transition: none; }
+.ta-row b { flex: 1; font-weight: 600; } .ta-row span { color: var(--muted); font-size: .76rem; }
+.ta-a { animation: taA var(--tc) infinite; } .ta-b { animation: taB var(--tc) infinite; } .ta-c { animation: taC var(--tc) infinite; }
+@keyframes taA { 0%, 100% { top: 32px; } }
+@keyframes taB { 0%, 31% { top: 64px; } 35%, 97% { top: 0; } 100% { top: 64px; } }
+@keyframes taC { 0%, 31% { top: 0; } 35%, 97% { top: 64px; } 100% { top: 0; } }
+.tm-alle .ta-u, .tm-alle .ta-p, .tm-alle .ta-d { animation: taEm var(--tc) infinite; }
+.tm-alle .ta-p { animation-name: taEm2; } .tm-alle .ta-d { animation-name: taEm3; }
+@keyframes taEm { 0%, 31% { color: var(--accent); font-weight: 700; } 33%, 100% { color: var(--muted); font-weight: 400; } }
+@keyframes taEm2 { 0%, 31% { color: var(--muted); font-weight: 400; } 33%, 64% { color: var(--accent); font-weight: 700; } 66%, 100% { color: var(--muted); font-weight: 400; } }
+@keyframes taEm3 { 0%, 64% { color: var(--muted); font-weight: 400; } 66%, 100% { color: var(--red); font-weight: 700; } }
+/* Favorit: Preis-Leiste, antippen klappt die Angebote auf */
+.tf-box { margin: 4px 10px 0; padding: 8px 10px; background: var(--surface); border-radius: var(--radius); box-shadow: var(--shadow); }
+.tf-h { display: flex; align-items: center; gap: 8px; }
+.tf-t { flex: 1; min-width: 0; } .tf-t small { display: block; color: var(--muted); font-size: .76rem; }
+.tf-best { color: var(--accent); font-size: .9rem; white-space: nowrap; }
+.tf-box .pbar { margin: 6px 0 0; }
+.tf-open { overflow: hidden; max-height: 0; animation: tfOpen var(--tc) infinite; }
+@keyframes tfOpen { 0%, 15% { max-height: 0; opacity: 0; } 25%, 88% { max-height: 80px; opacity: 1; } 96%, 100% { max-height: 0; opacity: 0; } }
+.tf-row { display: flex; align-items: baseline; gap: 6px; padding: 5px 0 0; font-size: .82rem; border-top: 1px solid var(--line); margin-top: 5px; }
+.tf-row b { font-weight: 600; } .tf-row small { color: var(--muted); } .tf-row span { margin-left: auto; color: var(--accent); font-weight: 700; }
+.tf-box .pbar-dot { animation: tfDot var(--tc) infinite; }
+@keyframes tfDot { 0%, 100% { box-shadow: 0 0 0 0 transparent; } 50% { box-shadow: 0 0 0 5px color-mix(in srgb, var(--accent) 30%, transparent); } }
+/* Zettel: Ansicht umschalten, in „Details“ erscheint der Angebots-Hinweis */
+.tm-zettel .tz-1 { animation: taSegZ1 var(--tc) infinite; } .tm-zettel .tz-2 { animation: taSegZ2 var(--tc) infinite; }
+@keyframes taSegZ1 { 0%, 14% { background: var(--surface); color: var(--text); font-weight: 600; } 16%, 94% { background: none; color: var(--muted); font-weight: 400; } 97%, 100% { background: var(--surface); color: var(--text); font-weight: 600; } }
+@keyframes taSegZ2 { 0%, 14% { background: none; color: var(--muted); font-weight: 400; } 16%, 94% { background: var(--surface); color: var(--text); font-weight: 600; } 97%, 100% { background: none; color: var(--muted); font-weight: 400; } }
+.tz-list { margin: 6px 10px 0; background: var(--surface); border-radius: var(--radius); box-shadow: var(--shadow); }
+.tz-row { display: flex; align-items: center; gap: 8px; padding: 7px 10px; border-top: 1px solid var(--line); font-size: .85rem; }
+.tz-row:first-child { border-top: 0; }
+.tz-t { flex: 1; min-width: 0; } .tz-q { color: var(--muted); font-size: .8rem; }
+.tz-c { width: 22px; height: 22px; border-radius: 50%; border: 2px solid var(--line); display: grid; place-items: center; color: transparent; font-size: .7rem; }
+.tz-h { display: block; overflow: hidden; color: var(--amber); font-size: .74rem; max-height: 0; opacity: 0; animation: tzHint var(--tc) infinite; }
+@keyframes tzHint { 0%, 16% { max-height: 0; opacity: 0; } 22%, 92% { max-height: 20px; opacity: 1; } 97%, 100% { max-height: 0; opacity: 0; } }
+/* Mehr: Untermenüs nacheinander */
+.tm-mehr .tmm { animation: tmmHi var(--tc) infinite; }
+.tm-mehr .tmm.t2 { animation-name: tmmHi2; } .tm-mehr .tmm.t3 { animation-name: tmmHi3; }
+@keyframes tmmHi { 0%, 12% { background: transparent; } 15%, 28% { background: var(--accent-soft); } 32%, 100% { background: transparent; } }
+@keyframes tmmHi2 { 0%, 37% { background: transparent; } 40%, 53% { background: var(--accent-soft); } 57%, 100% { background: transparent; } }
+@keyframes tmmHi3 { 0%, 62% { background: transparent; } 65%, 78% { background: var(--accent-soft); } 82%, 100% { background: transparent; } }
+.tm-mehr .more-item::after { left: 70%; }
+@media (prefers-reduced-motion: reduce) {
+  .tour-mock *, .tour-mock *::after { animation: none !important; }
+  .tf-open, .tz-h { max-height: none; opacity: 1; }
+}
+.tm-kat .chip i { color: inherit; opacity: .75; }
