@@ -605,7 +605,8 @@ const liShowPrices = () => LI.prices && !liSimple();
 
 function liRow(it, best) {
   const c = catInfo(it.cat);
-  const p = liShowPrices() ? liPrice(it, best) : null;
+  // Favoriten-Wünsche: kein Preis rechts (Hinweis „💡 im Angebot“ reicht), außer von Hand eingetragen – wie freie Einträge
+  const p = liShowPrices() && (it.kind !== 'wish' || it.price != null) ? liPrice(it, best) : null;
   const sub = [];
   if (liSimple()) { /* nur der Name */ } else if (it.kind === 'offer') {
     const o = it.offer;
