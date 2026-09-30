@@ -79,58 +79,6 @@ if ('hideNonFood' in S.f) { if (S.f.hideNonFood && !S.f.hideCats.includes('Non-F
 
 /* ---------- Text-Normalisierung & Suche ---------- */
 
-function norm(s) {
-  return (s || '').toLowerCase().replace(/ß/g, 'ss').normalize('NFD').replace(/[̀-ͯ]/g, '')
-    .replace(/ae/g, 'a').replace(/oe/g, 'o').replace(/ue/g, 'u');
-}
-const spaced = s => ' ' + s.replace(/[^a-z0-9]+/g, ' ');
-const qTokens = q => norm(q).split(/[^a-z0-9]+/).filter(t => t.length >= 2);
-
-function prep(o) {
-  o._ts = spaced(norm(`${o.brand} ${o.title}`));
-  o._gs = spaced(norm(`${o.group} ${o.category}`));
-  o._ds = spaced(norm(o.description));
-  o._tw = o._ts.split(' ').filter(w => w.length >= 3);
-  o._dw = o._ds.split(' ').filter(w => w.length >= 3);
-}
-
-function lev(a, b, max) {
-  if (Math.abs(a.length - b.length) > max) return max + 1;
-  let prev = Array.from({ length: b.length + 1 }, (_, j) => j);
-  for (let i = 1; i <= a.length; i++) {
-    const cur = [i];
-    let best = i;
-    for (let j = 1; j <= b.length; j++) {
-      cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
-      if (cur[j] < best) best = cur[j];
-    }
-    if (best > max) return max + 1;
-    prev = cur;
-  }
-  return prev[b.length];
-}
-
-// Treffer eines Suchworts: kurze Wörter nur am Wortanfang, lange auch in Komposita; tippfehlertolerant nur mit fuzzy
-// (Suche: erst ohne, damit „cola“ nicht „Collagen“/„Colgate“ findet)
-function hit(t, s, words, fuzzy = true) {
-  if (t.length < 5 ? s.includes(' ' + t) : s.includes(t)) return true;
-  if (!fuzzy || t.length < 4) return false;
-  const tol = t.length >= 8 ? 2 : 1;
-  return words.some(w => w.length >= t.length - tol &&
-    (lev(t, w.slice(0, t.length), tol) <= tol || lev(t, w, tol) <= tol));
-}
-
-// null = kein Treffer; strong = alle Suchwörter in Name/Marke/Gruppe (nicht nur in der Beschreibung)
-function matchQuery(o, qt, fuzzy = false) {
-  if (!qt.length) return null;
-  let strong = true;
-  for (const t of qt) {
-    if (hit(t, o._ts, o._tw, fuzzy) || o._gs.includes(' ' + t)) continue;
-    if (hit(t, o._ds, o._dw, fuzzy)) { strong = false; continue; }
-    return null;
-  }
-  return { strong };
-}
 
 /* ---------- Preise & Filter ---------- */
 
@@ -347,6 +295,7 @@ async function routeUpdate() {
   areaRefresh();
 }
 
+const NO_MARKET = '-';  // Mehr → Filter → Märkte: „keiner“
 // Gebiet und Händler der Gruppe (je Variante)
 function inGroup(v) {
   if (S.grpRet && !S.grpRet.includes(v.retailer)) return false;                              // Händler der Gruppe
@@ -359,6 +308,7 @@ function personalOne(v) {
   if (f.only.length && !f.only.includes(v.retailer)) return false;
   if (v.app_price && !v.regular_price && !useApp(v)) return false;
   const ms = f.markets[v.retailer];
+  if (ms?.[0] === NO_MARKET) return false;  // „keiner“: Händler ganz ausblenden
   if (ms?.length && v.markets?.length && !v.markets.some(m => ms.includes(m))) return false;
   return true;
 }
@@ -424,43 +374,8 @@ function countBy(list, fn) {
 
 /* ---------- Favoriten ---------- */
 
-function tokMatch(a, b) {
-  if (!a?.length || !b?.length) return false;
-  const A = new Set(a), B = new Set(b);
-  return a.every(t => B.has(t)) || b.every(t => A.has(t));
-}
 
-function favMatch(f, o) {
-  switch (f.type) {
-    case 'group':
-      if (o.category !== f.category || (f.group && o.group !== f.group)) return false;
-      if (f.brands?.length && !brandHit(f, o)) return false;
-      if (f.brandOnly && o.brand_type !== 'marke') return false;
-      break;
-    case 'brand':
-      if (o.brand_key !== f.brand_key) return false;
-      break;
-    case 'product':
-      if (o.brand_key !== f.brand_key || !tokMatch(f.tokens, o.tokens)) return false;
-      break;
-    case 'search':
-      if (!matchQuery(o, qTokens(f.q))?.strong) return false;
-      // mitgemerkte Filter der Suche: Produktgruppe und Marken
-      if (f.category && (o.category !== f.category || o.group !== f.group)) return false;
-      if (f.brands?.length && !brandHit(f, o)) return false;
-      break;
-    default:
-      return false;
-  }
-  if (f.max) {
-    if (byPack(f)) { if (o.ep > f.max) return false; }
-    else if (!(o.eu && o.unit === (f.maxUnit || o.unit) && o.eu <= f.max)) return false;
-  }
-  return true;
-}
-
-// Vergleichsmaß je Favorit: Grundpreis (Standard) oder Packungspreis (z.B. Kaffeekapseln, feste Packungsgrößen)
-const byPack = f => f?.metric === 'price';
+// Vergleichsmaß je Favorit: Grundpreis (Standard) oder Packungspreis (byPack in match.js)
 const metricSort = f => byPack(f) ? 'price' : 'unit';
 const metricLine = (o, f) => byPack(f) ? `${fmt(o.ep)} €${o.eu ? ` (${fmt(o.eu)} €/${o.unit})` : ''}` : priceLine(o);
 const maxLabel = f => byPack(f) ? `max. ${fmt(f.max)} € je Packung` : `max. ${fmt(f.max)} €/${f.maxUnit || 'kg'}`;
@@ -707,9 +622,8 @@ const sortBrands = list => list.sort((a, b) => (BRAND_RANK[a.type] ?? 2) - (BRAN
 
 const FOOD_CATS = ['Fleisch & Geflügel', 'Wurst & Aufschnitt', 'Fisch & Meeresfrüchte', 'Milch & Molkerei', 'Käse',
   'Brot & Backwaren', 'Tiefkühl', 'Vorrat & Konserven', 'Frühstück & Aufstrich', 'Süßes & Snacks', 'Kaffee & Tee', 'Getränke'];
-const bkey = s => norm(s).replace(/[^a-z0-9]/g, '');
 // Namen aller bekannten Marken (Schlüssel -> Anzeigename) und Händler der Eigenmarken
-const KNOWN_NAME = new Map(), KNOWN_RET = new Map();
+const KNOWN_RET = new Map();  // KNOWN_NAME: match.js
 // "Kat/Gruppe, Kat, …" – Gruppennamen enthalten selbst Kommas („Mehl, Zucker & Backen“): Teile ohne Kategorie anhängen
 const OWN_CATS = [...FOOD_CATS, 'Bier', 'Wein & Sekt', 'Spirituosen', 'Drogerie & Pflege', 'Baby & Kind', 'Haushalt & Reinigung', 'Tierbedarf'];
 function ownPlaces(s) {
@@ -740,22 +654,6 @@ function knownBrands(cat, group) {
   return [...out.values()];
 }
 
-// Marke eines Favoriten trifft ein Angebot: gleicher Markenschlüssel oder der Markenname als ganze Wortfolge im Titel
-// (Prospekte führen z.B. Twix oft unter „Mars“)
-const phraseCache = new Map();
-function brandPhrase(name) {
-  if (!phraseCache.has(name)) phraseCache.set(name, spaced(norm(name)).trim());
-  return phraseCache.get(name);
-}
-function brandHit(f, o) {
-  if (f.brands.includes(o.brand_key)) return true;
-  const ts = o._ts + ' ';
-  return f.brands.some(k => {
-    const n = f.brandNames?.[k] || KNOWN_NAME.get(k);
-    const ph = n && brandPhrase(n);
-    return ph && ph.length >= 3 && ts.includes(' ' + ph + ' ');
-  });
-}
 
 // Produktgruppen einer Kategorie A–Z, „Weitere“ zuletzt
 const groupsOf = cat => [...new Set(S.groups[cat] || [])].filter(g => g !== OTHER)
@@ -1188,8 +1086,10 @@ function moreSummary(id) {
     const na = appChips().filter(([, ks]) => !useApp({ retailer: ks[0] })).length;
     if (na) parts.push(`${na} App${na > 1 ? 's' : ''} aus`);
     if (f.hideCats.length) parts.push(`${f.hideCats.length} Kategorie${f.hideCats.length > 1 ? 'n' : ''} aus`);
-    const mk = Object.values(f.markets).filter(x => x.length).length;
+    const mk = Object.values(f.markets).filter(x => x.length && x[0] !== NO_MARKET).length;
+    const off = Object.values(f.markets).filter(x => x[0] === NO_MARKET).length;
     if (mk) parts.push(`Märkte bei ${mk} Händler${mk > 1 ? 'n' : ''}`);
+    if (off) parts.push(`${off} Händler ohne Markt`);
     const n = FILTER_OPTS.filter(([k]) => f[k]).length;
     if (n) parts.push(`${n} Schalter`);
     return parts.join(' · ') || 'keine';
@@ -1239,11 +1139,14 @@ function filterPanel() {
       <p ${small}>Markiert = wird angezeigt. Antippen blendet eine Kategorie aus.</p>
       <div class="chips wrap">${cats.map(c => `<button class="chip ${f.hideCats.includes(c) ? '' : 'on'}" data-act="fCat" data-c="${esc(c)}">${ICONS[c] || ''} ${esc(c)}</button>`).join('')}</div></div>
     <div class="panel"><h3>🏪 Märkte</h3>
-      <p ${small}>Nur für Händler mit Preisen je Markt. Keine Auswahl = alle Märkte im Gebiet.</p>
+      <p ${small}>Nur für Händler mit Preisen je Markt. Keine Auswahl = alle Märkte im Gebiet, „Keiner“ blendet den Händler aus.</p>
       ${marketsByRetailer().map(([k, ms]) => {
-        const sel = f.markets[k] || [];
+        const sel = f.markets[k] || [], none = sel[0] === NO_MARKET;
+        const info = none ? 'keiner' : sel.length ? `${sel.length} von ${ms.length} gewählt` : `alle ${ms.length}`;
         return `<details class="mk" ${sel.length ? 'open' : ''}><summary><b>${esc(S.retailers[k]?.name || k)}</b>
-          <span class="muted">${sel.length ? `${sel.length} von ${ms.length} gewählt` : `alle ${ms.length}`}</span></summary>
+          <span class="muted">${info}</span></summary>
+          <div class="chips wrap mk-all"><button class="chip ${!sel.length ? 'on' : ''}" data-act="fMkAll" data-r="${k}" data-v="all">Alle</button>
+            <button class="chip ${none ? 'on' : ''}" data-act="fMkAll" data-r="${k}" data-v="none">Keiner</button></div>
           ${ms.map(m => `<label class="line switch"><input type="checkbox" data-fmarket="${k}" value="${esc(m)}" ${sel.includes(m) ? 'checked' : ''}> ${esc(shortMarket(m))}</label>`).join('')}</details>`;
       }).join('') || '<p class="muted">Keine Händler mit mehreren Märkten im Gebiet.</p>'}</div>`;
 }
@@ -1949,6 +1852,12 @@ const onClick = {
     S.f.noApp = off ? S.f.noApp.filter(x => !ks.includes(x)) : [...new Set([...S.f.noApp, ...ks])];
     filtersChanged();
   },
+  fMkAll: el => {
+    const k = el.dataset.r, markets = { ...S.f.markets };
+    if (el.dataset.v === 'none') markets[k] = [NO_MARKET]; else delete markets[k];
+    S.f.markets = markets;
+    filtersChanged();
+  },
   fCat: el => {
     const c = el.dataset.c;
     S.f.hideCats = S.f.hideCats.includes(c) ? S.f.hideCats.filter(x => x !== c) : [...S.f.hideCats, c];
@@ -2114,7 +2023,7 @@ document.addEventListener('change', e => {
     return;
   }
   if (el.dataset.fmarket) {
-    const k = el.dataset.fmarket, cur = S.f.markets[k] || [];
+    const k = el.dataset.fmarket, cur = (S.f.markets[k] || []).filter(m => m !== NO_MARKET);
     S.f.markets = { ...S.f.markets, [k]: el.checked ? [...cur, el.value] : cur.filter(m => m !== el.value) };
     if (!S.f.markets[k].length) delete S.f.markets[k];
     filtersChanged();

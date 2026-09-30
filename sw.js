@@ -1,9 +1,9 @@
 // Service Worker: App-Gerüst aus dem Cache, API-Daten "network first" mit Offline-Fallback.
 // Pfade relativ zum Ort des Service Workers, damit die App auch unter …github.io/<repo>/ läuft.
-const SHELL = 'shell-v17';
+const SHELL = 'shell-v18';
 const DATA = 'data-v1';
 const BASE = new URL('./', self.location).pathname;
-const SHELL_FILES = ['./', 'index.html', 'app.js', 'cloud.js', 'goods.js', 'brands.js', 'list.js', 'config.js', 'style.css', 'manifest.webmanifest',
+const SHELL_FILES = ['./', 'index.html', 'app.js', 'cloud.js', 'goods.js', 'brands.js', 'match.js', 'list.js', 'config.js', 'style.css', 'manifest.webmanifest',
   'icons/icon.svg', 'icons/icon-192.png', 'icons/icon-512.png'];
 
 self.addEventListener('install', e => {
