@@ -319,10 +319,13 @@ function liMatches(name, cat) {
     if (!m.length && rule.auto && rule.brands.length && !rule.keep) m = cand;
     if (rule.auto && !rule.brands.length) {
       if (cat && cat !== 'sonstiges') m = m.filter(o => (LI_OFFER_CAT[o.category] || 'sonstiges') === cat);
-      // genaueste Stufe: ganzes Wort im Namen, sonst Wort = Produktgruppe, sonst alle Treffer
+      // genaueste Stufe: Wort im Namen – ganz oder als Grundwort am Ende eines zusammengesetzten Worts
+      // („Gulasch“ findet Rindergulasch, aber nicht Gulaschtopf; „Milch“ Vollmilch, aber nicht Milchschokolade),
+      // sonst Wort = Produktgruppe, sonst alle Treffer
       const word = (s, t) => (s + ' ').includes(' ' + t + ' ');
+      const head = (s, t) => (s + ' ').includes(t + ' ');
       const inGroup = m.filter(o => rule.words.every(t => word(spaced(norm(o.group)), t)));
-      const inName = m.filter(o => rule.words.every(t => word(o._ts, t)));
+      const inName = m.filter(o => rule.words.every(t => head(o._ts, t)));
       m = inName.length ? inName : inGroup.length ? inGroup : m;
     }
     m = sortOffers([...m], 'unit');
