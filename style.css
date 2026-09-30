@@ -791,3 +791,9 @@ details.mk summary .muted { font-size: .85rem; margin-left: auto; }
 /* Top-Angebote: ohne Sprung-Chips (wie in der App) */
 .tm-alle .ta-jump { animation: taJump var(--tc) infinite; }
 @keyframes taJump { 0%, 40% { opacity: 1; } 43%, 94% { opacity: 0; } 97%, 100% { opacity: 1; } }
+/* Zettel: Notiz-Hinweis hinter dem Namen, aufgeklappt als Zeile darunter */
+.li-note-ico { border: 0; background: var(--surface-2, rgba(127,127,127,.12)); border-radius: 6px; font-size: .85rem; line-height: 1;
+  padding: 3px 5px; margin-left: 6px; vertical-align: 1px; cursor: pointer; }
+.li-note-ico.on { opacity: 1; background: var(--accent-soft); }
+.li-note { display: block; margin: 3px 0 1px; padding: 4px 8px; border-left: 3px solid var(--accent); border-radius: 4px;
+  background: var(--accent-soft); font-size: .82rem; font-weight: 400; white-space: pre-wrap; }

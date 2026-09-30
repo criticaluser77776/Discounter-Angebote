@@ -104,6 +104,7 @@ const LI = {
   doneOpen: false,
   draft: '',
   prioNext: false,
+  noteOpen: new Set(),  // Einträge, deren Notiz aufgeklappt ist (🗒️ antippen)
   histOpen: false, histAll: false, histSort: load('li.histSort', 'last'),  // Schalter ❗ neben der Eingabe: nächster Eintrag wird als wichtig angelegt
   editId: null,
   lock: null,
@@ -624,7 +625,6 @@ function liRow(it, best) {
     const n = m.length ? liSearchOffers(it).length : 0;  // Anzahl wie Suche / langes Drücken
     if (m.length) sub.push(`<span class="li-hint">💡 im Angebot: ${esc(rname(m[0]))} ${esc(priceLine(m[0]))}${n > 1 ? ` · ${n} Angebote` : ''}</span>`);
   }
-  if (it.note && !liSimple()) sub.unshift(esc(it.note));
   if (!liSimple() && Cloud.enabled && it.by && it.by !== Cloud.name()) sub.push(`von ${esc(it.by)}`);
   const q = qtyLabel(it);
   const qe = LI.qtyId === it.id && !it.done;  // angetippt: Menge als Textfeld, ⚙️ statt Abhaken
@@ -632,13 +632,20 @@ function liRow(it, best) {
     <div class="li-bg"><span class="li-bg-done">✓ ${it.done ? 'zurück' : 'erledigt'}</span><span class="li-bg-del">Löschen 🗑</span></div>
     <div class="li-fg">
       <span class="li-ico" style="--c:${c.color}" title="${esc(c.name)}">${c.emoji}</span>
-      <div class="li-t" data-act="liEdit" data-lid="${it.id}">${it.prio && !it.done ? '<b class="li-prio" title="wichtig">❗</b>' : ''}${esc(it.name)}${sub.length ? `<small>${sub.join(' · ')}</small>` : ''}</div>
+      <div class="li-t" data-act="liEdit" data-lid="${it.id}">${it.prio && !it.done ? '<b class="li-prio" title="wichtig">❗</b>' : ''}${esc(it.name)}${it.note ? liNoteHtml(it) : ''}${sub.length ? `<small>${sub.join(' · ')}</small>` : ''}</div>
       ${qe ? `<input class="li-qin" data-liq="text" data-lid="${it.id}" value="${esc(q)}" placeholder="Menge" enterkeyhint="done" aria-label="Menge, z.B. 2 kg">`
         : q ? `<span class="li-q">${esc(q)}</span>` : ''}
       ${p && !qe ? liPriceHtml(it, best, p) : ''}
       ${qe ? `<button class="check li-qset" data-act="liQSet" data-lid="${it.id}" aria-label="Einstellungen">⚙️</button>`
         : `<button class="check${it.done ? ' on' : ''}" data-act="liToggle" data-lid="${it.id}" aria-label="${it.done ? 'wieder auf den Zettel' : 'abhaken'}">✓</button>`}
     </div></div>`;
+}
+
+// Notiz: kleines 🗒️ hinter dem Namen (in beiden Ansichten), antippen klappt den Text darunter auf/zu
+function liNoteHtml(it) {
+  const open = LI.noteOpen.has(it.id);
+  return `<button class="li-note-ico${open ? ' on' : ''}" data-act="liNote" data-lid="${it.id}" aria-label="Notiz ${open ? 'zuklappen' : 'anzeigen'}" aria-expanded="${open}">🗒️</button>` +
+    (open ? `<span class="li-note">${esc(it.note)}</span>` : '');
 }
 
 // Mengenfeld: „2,5 kg“, „3“, „3x“, „2 Pck“ → Menge + Einheit (bekannte Einheiten vereinheitlicht)
@@ -1078,6 +1085,12 @@ Object.assign(onClick, {
     if (!it) return;
     liSetDone(it, !it.done);
     if (it.done) toast(`✓ ${it.name}`, { label: 'Rückgängig', fn: () => { liSetDone(it, false); liRefresh(); } });
+    liRefresh();
+  },
+  liNote: el => {
+    if (swiped()) return;
+    const id = el.dataset.lid;
+    if (!LI.noteOpen.delete(id)) LI.noteOpen.add(id);
     liRefresh();
   },
   liEdit: el => {

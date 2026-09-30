@@ -2595,6 +2595,7 @@ const GUIDE = [
       ['Eintippen', 'z.B. „3 l Milch“ oder „2 Butter“ – Menge und Einheit werden erkannt. Vorschläge kommen aus Verlauf und Favoriten. ❗ vor dem Absenden = wichtig.'],
       ['Wischen', 'nach rechts = abhaken (Rückgängig möglich), nach links = löschen.'],
       ['Antippen', 'öffnet das Mengenfeld (z.B. „2 kg“). Das ⚙️ daneben öffnet die Bearbeitung: Menge, Notiz, Kategorie, Preis, passende Favoriten und Angebote.'],
+      ['🗒️ Notiz', 'hat ein Eintrag eine Notiz, steht 🗒️ hinter dem Namen – antippen zeigt die Notiz darunter, nochmal tippen klappt sie zu.'],
       ['💡 im Angebot', 'zeigt in der Ansicht „Details“, dass es zu einem Eintrag gerade ein Angebot gibt.'],
       ['Lange drücken (Details)', 'öffnet die passenden Angebote – bei getippten Einträgen dieselben Treffer wie die Suche oben. Ein Angebot nach rechts wischen ersetzt den Eintrag durch dieses Angebot – Menge und Notiz bleiben.'],
       ['Ansichten', '„Einfach“ zeigt nur Namen und Mengen, „Details“ zusätzlich Angebote und Preise; sortierbar nach Eingabe, A–Z oder Kategorie.'],
