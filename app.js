@@ -2624,6 +2624,28 @@ const guideHtml = () => `<div class="guide">${GUIDE.filter(g => Cloud.enabled ||
   </details>`).join('')}</div>`;
 
 // Einführung: je Seite ein Bereich mit den wichtigsten Punkten
+// Beispiel-Ausschnitte für den Rundgang (echte Bausteine der App, nicht antippbar)
+const TOUR_MOCK = {
+  kat: `<div class="tour-mock"><div class="tm-cap">Beispiel: Kategorie „Süßes & Snacks“</div>
+    <div class="chips wrap pick"><span class="chip">Alle <i>263</i></span><span class="chip">Riegel <i>29</i></span>
+      <span class="chip on">Schokolade <i>51</i></span><span class="chip">Pralinen <i>12</i></span></div>
+    <div class="chips-sep"><span>Marken</span></div>
+    <div class="chips wrap pick"><span class="chip">Nur Markenprodukte</span><span class="chip on">Milka <i>9</i></span>
+      <span class="chip">Lindt <i>1</i></span><span class="chip">Ritter Sport <i>3</i></span></div>
+    <div class="chips wrap grp-acts"><span class="btn act-fav">☆ Auswahl merken</span><span class="btn act-list">＋ Zettel</span></div></div>`,
+  alle: `<div class="tour-mock"><div class="tm-cap">Beispiel: Sortierung umschalten</div>
+    <div class="sortbar"><span>120 Angebote</span><div class="seg"><button class="on">Grundpreis</button><button>Preis</button><button>Rabatt</button></div></div></div>`,
+  fav: `<div class="tour-mock"><div class="tm-cap">Beispiel: Reihenfolge der Favoriten</div>
+    <div class="sortbar"><span>4 Favoriten</span><div class="seg"><button class="on">Angebote zuerst</button><button>Eigene Reihenfolge</button></div></div></div>`,
+  zettel: `<div class="tour-mock"><div class="tm-cap">Beispiel: Ansicht (unter der Eingabe) und Sortierung (über der Liste)</div>
+    <div class="sortbar"><span>Ansicht</span><div class="seg"><button>Einfach</button><button class="on">Details</button></div></div>
+    <div class="sortbar"><span>Sortierung</span><div class="seg"><button class="on">Eingabe</button><button>A–Z</button><button>Kategorie</button></div></div></div>`,
+  mehr: `<div class="tour-mock"><div class="tm-cap">Beispiel: Untermenüs unter „Mehr“</div>
+    <nav class="more-menu">${[['🔎', 'Filter', 'Apps, Kategorien, Märkte'], ['🎨', 'Darstellung', 'Farbschema · Start-Tab · 🔔'],
+      ['ℹ️', 'Über die App', 'Anleitung je Reiter']].map(([i, t, d]) => `<span class="more-item"><span class="mi-ico">${i}</span>
+      <span class="mi-txt"><b>${t}</b><small>${d}</small></span><span class="mi-go">›</span></span>`).join('')}</nav></div>`,
+};
+
 // Rundgang beim ersten Start: je Reiter eine Seite (tab = markierter Reiter in der Mini-Leiste), dazu das Wischen
 const TOUR_TABS = [['🗂️', 'Kategorien'], ['🏷️', 'Alle'], ['⭐', 'Favoriten'], ['📝', 'Zettel'], ['⚙️', 'Mehr']];
 const TOUR = [
@@ -2631,12 +2653,12 @@ const TOUR = [
     text: 'Die Angebote der Woche nach Warengruppen – zum Stöbern. Oben suchst du, die farbigen <b>Händler-Chips</b> filtern.',
     points: ['Kachel antippen, dann eine <b>Produktgruppe</b> und darunter <b>Marken</b> wählen.',
       'Gelb <b>☆ Gruppe merken</b> = als Favorit, grün <b>＋ Zettel</b> = auf den Einkaufszettel.',
-      'Verglichen wird nach <b>Grundpreis</b> (€/kg, €/l) – so sind verschiedene Packungen vergleichbar.'] },
+      'Verglichen wird nach <b>Grundpreis</b> (€/kg, €/l) – so sind verschiedene Packungen vergleichbar.'], mock: 'kat' },
   { tab: 1, ico: '🏷️', title: 'Alle & Suche',
     text: 'Alle Angebote in einer Liste – sortiert nach Grundpreis, Preis oder Rabatt.',
     points: ['Die <b>Suche</b> oben gilt überall, z.B. „Butter“ oder „Jacobs Kaffee“.',
       '<b>📱</b> = Preis nur mit Händler-App; unter Mehr → Filter wählst du, welche Apps du nutzt.',
-      'Angebot <b>antippen</b>: Details mit Märkten, Preisverlauf und Preis-Leiste.'] },
+      'Angebot <b>antippen</b>: Details mit Märkten, Preisverlauf und Preis-Leiste.'], mock: 'alle' },
   { tab: 1, ico: '👉', title: 'Wischen statt Knöpfe',
     text: 'Ein Angebot oder einen Favoriten <b>nach rechts wischen</b> – schon steht er auf dem Einkaufszettel.',
     demo: true,
@@ -2646,22 +2668,23 @@ const TOUR = [
     text: 'Merk dir, was du regelmäßig kaufst – Produktgruppen, Marken oder einzelne Produkte. Die App zeigt, wo es gerade im Angebot ist.',
     points: ['<b>＋ Hinzufügen</b> oder <b>☆</b> an einem Angebot. Die Zahl am Stern unten = Favoriten im Angebot.',
       'Antippen klappt die Angebote auf; die <b>Preis-Leiste</b> zeigt günstig (grün) bis teuer (rot) im Jahresvergleich.',
-      'Nach links wischen entfernt einen Favoriten, <b>⋮</b> öffnet seine Einstellungen (z.B. Preisalarm).'] },
+      'Nach links wischen entfernt einen Favoriten, <b>⋮</b> öffnet seine Einstellungen (z.B. Preisalarm).'], mock: 'fav' },
   { tab: 3, ico: '📝', title: 'Einkaufszettel',
     text: 'Einfach eintippen, z.B. „3 l Milch“. Der Zettel ist für alle in der Gruppe derselbe.',
     points: ['<b>Rechts wischen</b> = abhaken, <b>links wischen</b> = löschen, <b>antippen</b> = bearbeiten.',
       'In der Ansicht „Details“ zeigt <b>💡 im Angebot</b>, wo es etwas gibt; <b>lange drücken</b> listet die Angebote – nach rechts wischen ersetzt den Eintrag.',
-      'Der <b>Verlauf</b> merkt sich, was ihr schon gekauft habt.'] },
+      'Der <b>Verlauf</b> merkt sich, was ihr schon gekauft habt.'], mock: 'zettel' },
   { tab: 4, ico: '⚙️', title: 'Mehr',
     text: 'Einstellungen und Hilfe.',
     points: ['<b>Filter</b>: genutzte Apps, Kategorien ausblenden, einzelne Märkte.',
       '<b>Darstellung</b>: Start-Tab und 🔔 Benachrichtigung bei neuen Favoriten-Angeboten.',
-      '<b>Über die App</b>: die ausführliche Anleitung zu allen Reitern · <b>Feedback</b> an den Entwickler.'] },
+      '<b>Über die App</b>: die ausführliche Anleitung zu allen Reitern · <b>Feedback</b> an den Entwickler.'], mock: 'mehr' },
 ];
 const tourHtml = t => `<div class="tour-tabs">${TOUR_TABS.map(([i, l], k) => `<span class="${k === t.tab ? 'on' : ''}"><i>${i}</i>${l}</span>`).join('')}</div>
   <h2>${t.ico} ${t.title}</h2><p>${t.text}</p>
   ${t.demo ? `<div class="tour-demo"><div class="td-z">＋ Auf den Zettel</div><div class="td-w">❗ Wichtig</div>
     <div class="td-card"><span class="td-th">🧈</span><span><b>Markenbutter</b><small>Beispiel · 250 g</small></span><b class="td-p">5,16 €/kg</b></div></div>` : ''}
+  ${t.mock ? TOUR_MOCK[t.mock] : ''}
   <ul class="tour-pts">${t.points.map(x => `<li>${x}</li>`).join('')}</ul>`;
 
 const INTRO = [

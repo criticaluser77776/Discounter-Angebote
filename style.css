@@ -689,3 +689,10 @@ details.mk summary .muted { font-size: .85rem; margin-left: auto; }
   opacity: .55; border-radius: 8px; padding: 3px 0; }
 .tour-tabs span i { font-style: normal; font-size: 18px; }
 .tour-tabs span.on { opacity: 1; color: var(--accent); font-weight: 700; background: var(--accent-soft); }
+/* Rundgang: Beispiel-Ausschnitte (nicht bedienbar) */
+.tour-mock { pointer-events: none; margin: 10px 0; padding: 6px 0 8px; border: 1px dashed var(--line); border-radius: var(--radius);
+  background: var(--bg); }
+.tour-mock .tm-cap { font-size: .72rem; color: var(--muted); padding: 0 12px 2px; text-transform: uppercase; letter-spacing: .03em; }
+.tour-mock .chips, .tour-mock .chips-sep { padding-left: 10px; padding-right: 10px; }
+.tour-mock .sortbar { margin: 4px 10px; padding: 0; }
+.tour-mock .more-menu { margin: 4px 10px 0; }
