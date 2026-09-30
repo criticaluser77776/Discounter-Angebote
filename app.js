@@ -2624,29 +2624,42 @@ const guideHtml = () => `<div class="guide">${GUIDE.filter(g => Cloud.enabled ||
   </details>`).join('')}</div>`;
 
 // Einführung: je Seite ein Bereich mit den wichtigsten Punkten
+// Rundgang beim ersten Start: je Reiter eine Seite (tab = markierter Reiter in der Mini-Leiste), dazu das Wischen
+const TOUR_TABS = [['🗂️', 'Kategorien'], ['🏷️', 'Alle'], ['⭐', 'Favoriten'], ['📝', 'Zettel'], ['⚙️', 'Mehr']];
 const TOUR = [
-  { ico: '🔍', title: 'Angebote finden',
-    text: 'Unter <b>Kategorien</b> stöberst du nach Warengruppen, unter <b>Alle</b> siehst du alles in einer Liste. Die <b>Suche</b> oben gilt überall, die farbigen <b>Händler-Chips</b> filtern.',
-    points: ['Verglichen wird nach <b>Grundpreis</b> (€/kg, €/l) – so sind verschiedene Packungen vergleichbar.',
+  { tab: 0, ico: '🗂️', title: 'Kategorien',
+    text: 'Die Angebote der Woche nach Warengruppen – zum Stöbern. Oben suchst du, die farbigen <b>Händler-Chips</b> filtern.',
+    points: ['Kachel antippen, dann eine <b>Produktgruppe</b> und darunter <b>Marken</b> wählen.',
+      'Gelb <b>☆ Gruppe merken</b> = als Favorit, grün <b>＋ Zettel</b> = auf den Einkaufszettel.',
+      'Verglichen wird nach <b>Grundpreis</b> (€/kg, €/l) – so sind verschiedene Packungen vergleichbar.'] },
+  { tab: 1, ico: '🏷️', title: 'Alle & Suche',
+    text: 'Alle Angebote in einer Liste – sortiert nach Grundpreis, Preis oder Rabatt.',
+    points: ['Die <b>Suche</b> oben gilt überall, z.B. „Butter“ oder „Jacobs Kaffee“.',
       '<b>📱</b> = Preis nur mit Händler-App; unter Mehr → Filter wählst du, welche Apps du nutzt.',
-      'Angebot antippen: Details mit Preisverlauf und Märkten.'] },
-  { ico: '👉', title: 'Wischen statt Knöpfe',
+      'Angebot <b>antippen</b>: Details mit Märkten, Preisverlauf und Preis-Leiste.'] },
+  { tab: 1, ico: '👉', title: 'Wischen statt Knöpfe',
     text: 'Ein Angebot oder einen Favoriten <b>nach rechts wischen</b> – schon steht er auf dem Einkaufszettel.',
     demo: true,
     points: ['<b>Obere Hälfte</b> der Karte: auf den Zettel.', '<b>Untere Hälfte</b>: ❗ wichtig auf den Zettel.',
       'Ein grünes <b>✓</b> vor dem Titel zeigt: steht schon auf dem Zettel.'] },
-  { ico: '⭐', title: 'Favoriten',
+  { tab: 2, ico: '⭐', title: 'Favoriten',
     text: 'Merk dir, was du regelmäßig kaufst – Produktgruppen, Marken oder einzelne Produkte. Die App zeigt, wo es gerade im Angebot ist.',
-    points: ['<b>☆</b> an einem Angebot oder „☆ Gruppe merken“ in den Kategorien.',
-      'Die <b>Preis-Leiste</b> zeigt, ob der Preis im Jahresvergleich günstig (grün) oder teuer (rot) ist.',
-      'Optional: 🔔 <b>Benachrichtigung</b> bei neuen Favoriten-Angeboten (Mehr → Darstellung).'] },
-  { ico: '📝', title: 'Einkaufszettel',
+    points: ['<b>＋ Hinzufügen</b> oder <b>☆</b> an einem Angebot. Die Zahl am Stern unten = Favoriten im Angebot.',
+      'Antippen klappt die Angebote auf; die <b>Preis-Leiste</b> zeigt günstig (grün) bis teuer (rot) im Jahresvergleich.',
+      'Nach links wischen entfernt einen Favoriten, <b>⋮</b> öffnet seine Einstellungen (z.B. Preisalarm).'] },
+  { tab: 3, ico: '📝', title: 'Einkaufszettel',
     text: 'Einfach eintippen, z.B. „3 l Milch“. Der Zettel ist für alle in der Gruppe derselbe.',
     points: ['<b>Rechts wischen</b> = abhaken, <b>links wischen</b> = löschen, <b>antippen</b> = bearbeiten.',
-      'In der Ansicht „Details“: <b>💡 im Angebot</b> und <b>lange drücken</b> zeigt die passenden Angebote – nach rechts wischen ersetzt den Eintrag.',
-      'Alles Weitere: <b>Mehr → Über die App</b>.'] },
+      'In der Ansicht „Details“ zeigt <b>💡 im Angebot</b>, wo es etwas gibt; <b>lange drücken</b> listet die Angebote – nach rechts wischen ersetzt den Eintrag.',
+      'Der <b>Verlauf</b> merkt sich, was ihr schon gekauft habt.'] },
+  { tab: 4, ico: '⚙️', title: 'Mehr',
+    text: 'Einstellungen und Hilfe.',
+    points: ['<b>Filter</b>: genutzte Apps, Kategorien ausblenden, einzelne Märkte.',
+      '<b>Darstellung</b>: Start-Tab und 🔔 Benachrichtigung bei neuen Favoriten-Angeboten.',
+      '<b>Über die App</b>: die ausführliche Anleitung zu allen Reitern · <b>Feedback</b> an den Entwickler.'] },
 ];
-const tourHtml = t => `<h2>${t.ico} ${t.title}</h2><p>${t.text}</p>
+const tourHtml = t => `<div class="tour-tabs">${TOUR_TABS.map(([i, l], k) => `<span class="${k === t.tab ? 'on' : ''}"><i>${i}</i>${l}</span>`).join('')}</div>
+  <h2>${t.ico} ${t.title}</h2><p>${t.text}</p>
   ${t.demo ? `<div class="tour-demo"><div class="td-z">＋ Auf den Zettel</div><div class="td-w">❗ Wichtig</div>
     <div class="td-card"><span class="td-th">🧈</span><span><b>Markenbutter</b><small>Beispiel · 250 g</small></span><b class="td-p">5,16 €/kg</b></div></div>` : ''}
   <ul class="tour-pts">${t.points.map(x => `<li>${x}</li>`).join('')}</ul>`;
@@ -2668,7 +2681,7 @@ function renderWizard() {
     welcome: () => `<h2>👋 Willkommen${Cloud.group() ? ` in der Gruppe „${esc(Cloud.group())}“` : ''}!</h2>
       <p>Die App vergleicht die Wochenangebote der Discounter und Supermärkte in eurer Gegend nach Grundpreis –
         und führt euren gemeinsamen Einkaufszettel.</p>
-      <p class="muted">Erst ein, zwei Einstellungen, dann ein kurzer Rundgang (${TOUR.length} Seiten). Alles lässt sich später unter „Mehr“ ändern,
+      <p class="muted">Erst ein, zwei Einstellungen, dann ein kurzer Rundgang durch alle Reiter (${TOUR.length} Seiten). Alles lässt sich später unter „Mehr“ ändern,
         die ausführliche Anleitung steht unter Mehr → Über die App.</p>`,
     area: () => `<h2>📍 Gebiet & Händler</h2>
       <p class="muted">Wo kauft ihr ein? Wohnort mit Umkreis, optional eine Strecke (z.B. Arbeitsweg) und die Händler.</p>${areaPanel()}`,

@@ -682,3 +682,10 @@ details.mk summary .muted { font-size: .85rem; margin-left: auto; }
 .wiz { padding: 0 16px; }
 /* Karten und Favoriten-Köpfe: kein Markieren beim langen Drücken/Wischen (auch im Fenster „Angebote zu …“) */
 .card, .fav-h, .sheet-body .li-sheet-h { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+/* Rundgang: Mini-Leiste der Reiter, aktueller Reiter markiert */
+.tour-tabs { display: flex; justify-content: space-between; gap: 2px; margin: 4px 0 10px; padding: 6px 4px;
+  border-radius: var(--radius); background: var(--surface); box-shadow: var(--shadow); }
+.tour-tabs span { flex: 1; display: flex; flex-direction: column; align-items: center; font-size: .68rem; color: var(--muted);
+  opacity: .55; border-radius: 8px; padding: 3px 0; }
+.tour-tabs span i { font-style: normal; font-size: 18px; }
+.tour-tabs span.on { opacity: 1; color: var(--accent); font-weight: 700; background: var(--accent-soft); }
