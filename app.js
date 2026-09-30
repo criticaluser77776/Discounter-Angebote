@@ -2259,7 +2259,9 @@ qInput.addEventListener('input', () => {
     render();
   }, 160);
 });
-qInput.addEventListener('keydown', e => { if (e.key === 'Enter') qInput.blur(); });
+// Enter/„Suchen“ schließt die Tastatur – über das Formular, weil Android-Tastaturen (Autovervollständigung) nicht immer ein Enter-keydown senden
+$('#qForm').addEventListener('submit', e => { e.preventDefault(); qInput.blur(); });
+qInput.addEventListener('keydown', e => { if (e.key === 'Enter' || e.keyCode === 13) qInput.blur(); });
 $('#clearQ').addEventListener('click', () => { clearSearch(); qInput.focus(); });
 
 $('#back').addEventListener('click', () => { if (!goUp()) nav('#/'); });

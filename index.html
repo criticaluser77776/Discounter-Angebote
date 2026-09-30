@@ -15,11 +15,11 @@
 <header class="top">
   <div class="bar">
     <button id="back" class="icon-btn" hidden aria-label="Zurück">‹</button>
-    <label class="search">
+    <form id="qForm" class="search" role="search" action="#">
       <span aria-hidden="true">🔍</span>
       <input id="q" type="search" placeholder="Suchen: Butter, Kaffee, Jacobs …" autocomplete="off" enterkeyhint="search">
       <button id="clearQ" type="button" hidden aria-label="Suche löschen">×</button>
-    </label>
+    </form>
   </div>
   <div id="retailerChips" class="chips scroll" role="toolbar" aria-label="Händler"></div>
 </header>

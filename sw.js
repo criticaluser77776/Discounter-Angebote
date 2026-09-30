@@ -1,6 +1,6 @@
 // Service Worker: App-Gerüst aus dem Cache, API-Daten "network first" mit Offline-Fallback.
 // Pfade relativ zum Ort des Service Workers, damit die App auch unter …github.io/<repo>/ läuft.
-const SHELL = 'shell-v45';
+const SHELL = 'shell-v46';
 const DATA = 'data-v1';
 const BASE = new URL('./', self.location).pathname;
 const SHELL_FILES = ['./', 'index.html', 'app.js', 'cloud.js', 'goods.js', 'brands.js', 'match.js', 'list.js', 'config.js', 'style.css', 'manifest.webmanifest',
