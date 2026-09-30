@@ -1292,6 +1292,7 @@ document.addEventListener('submit', e => {
   if (e.target.id !== 'liForm') return;
   e.preventDefault();
   const inp = $('#liIn');
+  inp.blur();  // Enter schließt die Tastatur immer
   const n = liAddText(inp.value);
   if (n) {
     inp.value = '';
