@@ -1219,7 +1219,7 @@ function morePanel(id) {
       <p class="muted" style="margin:0 0 8px;font-size:.85rem">${Object.entries(S.retailers).map(([k, r]) => `${esc(r.name)} ${counts[k] || 0}`).join(' · ')}</p>
       ${DATA.server ? '' : '<p class="muted" style="margin:0 0 8px;font-size:.85rem">Die Angebote werden täglich um 5 und 14 Uhr automatisch abgerufen.</p>'}
       <div id="status"><p class="muted">Status wird geladen …</p></div>
-    </div>`;
+    </div>${Cloud.enabled && Cloud.isAdmin() ? '<div class="panel" id="usage"><h3>📈 Kontingent (Free Tier)</h3><p class="muted">wird geladen …</p></div>' : ''}`;
   }
   if (id === 'feedback') {
     const d = load('fbDraft', { kind: 'bug', text: '' });
@@ -1284,6 +1284,75 @@ function renderStatus() {
     ${s.log?.length && run ? `<pre class="log">${esc(s.log.slice(-25).join('\n'))}</pre>` : ''}`;
 }
 
+/* ---------- Kontingent (nur Admins): Verbrauch gegen die kostenlosen Tarife, Monatsschätzung, Ausbau-Spielraum ---------- */
+
+// Grenzen der kostenlosen Tarife (Stand 2026 – bei Tarifänderungen hier anpassen)
+const FREE = {
+  ghMinutes: 2000,       // GitHub Actions, privates Repo, Minuten/Monat
+  dbMB: 500,             // Supabase Datenbank
+  egressGB: 5,           // Supabase Datenverkehr (ausgehend) je Monat
+  pagesGB: 100,          // GitHub Pages Bandbreite je Monat (weiche Grenze)
+};
+const USAGE_SAFETY = 0.8;  // Ausbau nur bis 80 % der Grenze rechnen
+const mb = b => b / 1048576;
+function usageBar(label, used, limit, unit, note) {
+  const pct = Math.min(100, Math.round(used / limit * 100));
+  const cls = pct >= 80 ? 'r' : pct >= 50 ? 'y' : 'g';
+  const f = v => v >= 100 ? Math.round(v).toLocaleString('de-DE') : fmt(v).replace(/,00$/, '');
+  return `<div class="ubar"><div class="ubar-h"><b>${label}</b><span>${f(used)} / ${f(limit)} ${unit} · ${pct} %</span></div>
+    <div class="ubar-t"><i class="${cls}" style="width:${Math.max(pct, 1)}%"></i></div>${note ? `<small>${note}</small>` : ''}</div>`;
+}
+async function renderUsage() {
+  const el = $('#usage');
+  if (!el) return;
+  let db = null;
+  try { db = await Cloud.adminUsage(); } catch (err) { db = { error: err.message }; }
+  const u = S.status?.usage || {};
+  const gh = u.github, days = new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).getDate();
+  const places = u.places || S.places.length || 1;
+  let h = '<h3>📈 Kontingent (Free Tier)</h3>';
+  // GitHub Actions: je Tag 2 Abrufe (auf volle Minuten gerundet) + 4 kurze Zeitprüfungen à 1 Minute
+  let ghMonth = null, ghPlaces = null;
+  if (gh?.avg_fetch_min) {
+    const perDay = 2 * Math.ceil(gh.avg_fetch_min) + 4;
+    ghMonth = perDay * days;
+    // Laufzeit wächst etwa mit der Zahl der Orte (Märkte je Ort); Rest (Einrichtung, Upload) ca. 1 Minute
+    const perPlace = Math.max(gh.avg_fetch_min - 1, 0.5) / places;
+    const maxFetch = Math.min((FREE.ghMinutes * USAGE_SAFETY / days - 4) / 2, 28);  // Job-Zeitlimit 30 Min.
+    ghPlaces = Math.floor((Math.floor(maxFetch) - 1) / perPlace);
+    h += usageBar('GitHub Actions', gh.minutes, FREE.ghMinutes, 'Min.',
+      `${gh.fetches} Abrufe im ${gh.month} (Ø ${fmt(gh.avg_fetch_min)} Min.) · Schätzung voller Monat ≈ ${ghMonth} Min.`);
+  } else h += '<p class="muted">GitHub-Verbrauch erscheint nach dem nächsten Abruf.</p>';
+  // Supabase Datenbank
+  if (db && !db.error) {
+    const top = (db.tables || []).slice(0, 3).map(t => `${esc(t.name)} ${fmt(mb(t.bytes))} MB`).join(' · ');
+    h += usageBar('Supabase Datenbank', mb(db.db_bytes), FREE.dbMB, 'MB', top);
+  } else if (db?.error) h += `<p class="err">Supabase-Verbrauch nicht abrufbar: ${esc(db.error)}</p>`;
+  // Datenverkehr: jedes aktive Gerät lädt Angebote + Katalog nach jedem Upload (≈ 2x täglich) einmal komprimiert
+  let devPlaces = null, perDev = null;
+  if (u.offers && db && !db.error) {
+    perDev = mb(u.offers.gz + u.catalog.gz) * 2 * days;             // MB je Gerät und Monat
+    const active = Math.max(db.active_30d, 1);
+    const egress = perDev * active / 1024;
+    h += usageBar('Supabase Datenverkehr (Schätzung)', egress, FREE.egressGB, 'GB',
+      `${active} aktive Geräte (30 Tage) × ≈ ${fmt(perDev)} MB/Monat · Download je Aktualisierung ${fmt(mb(u.offers.gz + u.catalog.gz))} MB (gzip)`);
+    // Datenmenge wächst höchstens mit den Orten (bundesweite Discounter bleiben gleich) -> vorsichtig linear
+    devPlaces = Math.floor(FREE.egressGB * 1024 * USAGE_SAFETY / (perDev * active) * places);
+  }
+  h += usageBar('GitHub Pages (App-Dateien)', 0.05 * Math.max(db?.active_30d || 1, 1), FREE.pagesGB, 'GB',
+    'grobe Schätzung: App-Updates ca. 50 MB je Gerät und Monat – unkritisch');
+  // Ausbau-Spielraum
+  if (ghPlaces || devPlaces) {
+    const lim = [ghPlaces && `GitHub-Minuten ≈ ${ghPlaces} Orte`, devPlaces && `Datenverkehr ≈ ${devPlaces} Orte bei ${db.active_30d || 1} Geräten`].filter(Boolean);
+    const maxDev = perDev ? Math.floor(FREE.egressGB * 1024 * USAGE_SAFETY / perDev) : null;
+    h += `<div class="u-out"><b>Ausbau-Spielraum</b> (bis ${USAGE_SAFETY * 100} % der Grenzen, heute ${places} Orte, ${u.count || S.offers.length} Angebote):
+      <ul><li>${lim.join('</li><li>')}</li>${maxDev ? `<li>bei heutigem Gebiet ≈ ${maxDev} aktive Geräte</li>` : ''}</ul>
+      <small>Engpass ist meist die Abrufzeit (Märkte je Ort). Mehr Geräte kosten nur Datenverkehr.</small></div>`;
+  }
+  if (db && !db.error) h += `<p class="muted" style="margin:6px 0 0;font-size:.8rem">${db.groups} Gruppe${db.groups === 1 ? '' : 'n'} · ${db.devices} Geräte · ${db.push_subs} mit Benachrichtigung</p>`;
+  el.innerHTML = h;
+}
+
 async function loadStatus() {
   clearTimeout(S.poll);
   try {
@@ -1294,6 +1363,7 @@ async function loadStatus() {
     return;
   }
   renderStatus();
+  renderUsage();
   if (S.status.fetch.running) {
     S.wasRunning = true;
     S.poll = setTimeout(loadStatus, 2500);

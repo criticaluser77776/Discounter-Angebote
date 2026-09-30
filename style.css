@@ -634,3 +634,13 @@ details.mk summary .muted { font-size: .85rem; margin-left: auto; }
 .btn.act-fav.on { background: var(--star); border-color: var(--star); color: #1b1300; }
 .btn.act-list { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
 .chip.faved::after { content: "★"; color: var(--star); margin-left: 2px; }
+/* Kontingent-Übersicht (Mehr → Daten & Abruf, Admins) */
+.ubar { margin: 10px 0; }
+.ubar-h { display: flex; justify-content: space-between; gap: 8px; font-size: .88rem; }
+.ubar-h span { color: var(--muted); white-space: nowrap; }
+.ubar-t { height: 8px; border-radius: 4px; background: var(--surface-2); overflow: hidden; margin: 4px 0 2px; }
+.ubar-t i { display: block; height: 100%; border-radius: 4px; }
+.ubar-t i.g { background: var(--accent); } .ubar-t i.y { background: var(--star); } .ubar-t i.r { background: var(--red); }
+.ubar small, .u-out small { color: var(--muted); font-size: .78rem; display: block; }
+.u-out { margin-top: 12px; padding: 8px 10px; border-radius: 8px; background: var(--surface-2); font-size: .88rem; }
+.u-out ul { margin: 4px 0; padding-left: 18px; }

@@ -139,6 +139,7 @@ const Cloud = (() => {
       body: { p_endpoint: sub.endpoint, p_p256dh: sub.keys.p256dh, p_auth: sub.keys.auth } }),
     pushUnsubscribe: () => rest('rpc/push_unsubscribe', { method: 'POST', prefer: 'return=minimal', body: {} }),
     pushCtx: () => ({ url, key, code: access?.code || '', device }),
+    adminUsage: () => rest('rpc/admin_usage', { method: 'POST', body: {} }),
     sendFeedback: (kind, text) => rest('rpc/send_feedback', { method: 'POST', prefer: 'return=minimal',
       body: { p_kind: kind, p_text: text, p_version: String(window.APP_VERSION?.number || '') } }),
     async adminGroupName(name) {
