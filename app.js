@@ -2557,16 +2557,19 @@ const GUIDE = [
   { id: 'kat', ico: '🗂️', title: 'Kategorien',
     intro: 'Alle aktuellen Angebote nach Warengruppen – zum Stöbern.',
     items: [
+      ['Übersicht', 'oben der Hinweis „★ … Angebote zu deinen Favoriten“ (antippen = Favoriten), darunter je Kategorie eine Kachel mit der Zahl der Angebote.'],
       ['Kachel antippen', 'zeigt die Angebote der Kategorie. Oben wählst du eine Produktgruppe (z.B. „Schokolade“), ein zweiter Tipp hebt die Auswahl auf.'],
-      ['Marken', 'unter der Trennlinie „Marken“ Marken antippen, um nur diese zu sehen. „Nur Markenprodukte“ blendet Handelsmarken (ja!, Gut & Günstig …) aus.'],
+      ['Marken', 'erscheinen, sobald eine Produktgruppe gewählt ist: unter der Trennlinie „Marken“ antippen, um nur diese zu sehen. „Nur Markenprodukte“ blendet Handelsmarken (ja!, Gut & Günstig …) aus.'],
       ['☆ Gruppe merken', 'merkt die Produktgruppe mit den gewählten Marken als Favorit (gelb). Nochmal tippen entfernt ihn.'],
       ['＋ Zettel', 'setzt die Produktgruppe als Wunsch auf den Einkaufszettel (grün) – dort steht dann immer das günstigste passende Angebot.'],
-      ['Sortierung', 'Grundpreis (€/kg, €/l), Preis oder Rabatt. Beim Grundpreis stehen gleiche Einheiten zusammen, kg und l zuerst.'],
+      ['Sortierung', 'über der Liste: Grundpreis (€/kg, €/l), Preis oder Rabatt. Beim Grundpreis stehen gleiche Einheiten zusammen, kg und l zuerst. (Gilt auch für die Suche.)'],
     ] },
   { id: 'alle', ico: '🏷️', title: 'Alle & Suche',
-    intro: 'Alle Angebote in einer Liste, die Suche oben gilt für die ganze App.',
+    intro: 'Alle Angebote in einer Liste, nach Kategorien gegliedert – und die Suche, die überall oben steht.',
     items: [
-      ['Suche', 'z.B. „Butter“, „Jacobs Kaffee“. Gesucht wird zuerst genau (Wortanfang), Tippfehler nur, wenn sonst nichts passt. Treffer nur in der Beschreibung lassen sich zuschalten.'],
+      ['Gliederung', 'die Angebote stehen nach Kategorien geordnet, innerhalb nach Rabatt. Die Chips oben (z.B. „🧀 Käse“) springen zur jeweiligen Kategorie.'],
+      ['🔥 Top-Angebote', 'zeigt nur Angebote ab 30 % Rabatt, nach Rabatt sortiert. Nochmal tippen = zurück zu allen.'],
+      ['Suche', 'z.B. „Butter“, „Jacobs Kaffee“. Gesucht wird zuerst genau (Wortanfang), Tippfehler nur, wenn sonst nichts passt. Die Treffer lassen sich nach Produktgruppe und Marke eingrenzen und nach Grundpreis, Preis oder Rabatt sortieren; Treffer nur in der Beschreibung lassen sich zuschalten.'],
       ['Händler-Chips', 'die farbigen Chips oben: markierte Händler werden angezeigt, ohne Markierung alle.'],
       ['Angebot antippen', 'öffnet die Details: Preise mit/ohne App, Normalpreis, Gültigkeit, Märkte, Preisverlauf und Preis-Leiste.'],
       ['👉 Nach rechts wischen', 'obere Hälfte der Karte = auf den Zettel, untere Hälfte = ❗ wichtig auf den Zettel. Die Zone unter dem Finger leuchtet.'],
@@ -2589,16 +2592,17 @@ const GUIDE = [
     items: [
       ['Eintippen', 'z.B. „3 l Milch“ oder „2 Butter“ – Menge und Einheit werden erkannt. Vorschläge kommen aus Verlauf und Favoriten. ❗ vor dem Absenden = wichtig.'],
       ['Wischen', 'nach rechts = abhaken (Rückgängig möglich), nach links = löschen.'],
-      ['Antippen', 'öffnet die Bearbeitung: Menge, Notiz, Kategorie, Preis, passende Favoriten und Angebote.'],
+      ['Antippen', 'öffnet das Mengenfeld (z.B. „2 kg“). Das ⚙️ daneben öffnet die Bearbeitung: Menge, Notiz, Kategorie, Preis, passende Favoriten und Angebote.'],
       ['💡 im Angebot', 'zeigt in der Ansicht „Details“, dass es zu einem Eintrag gerade ein Angebot gibt.'],
       ['Lange drücken (Details)', 'öffnet die passenden Angebote – bei getippten Einträgen dieselben Treffer wie die Suche oben. Ein Angebot nach rechts wischen ersetzt den Eintrag durch dieses Angebot – Menge und Notiz bleiben.'],
       ['Ansichten', '„Einfach“ zeigt nur Namen und Mengen, „Details“ zusätzlich Angebote und Preise; sortierbar nach Eingabe, A–Z oder Kategorie.'],
       ['Verlauf', 'früher Eingetragenes – ＋ setzt es wieder auf den Zettel, nach links wischen entfernt es aus dem Verlauf.'],
+      ['⋯ Menü', 'Preise anzeigen, Bildschirm beim Einkaufen anlassen, Kategorien bearbeiten, Zettel teilen, Abgehakte entfernen, Zettel leeren.'],
     ] },
   { id: 'mehr', ico: '⚙️', title: 'Mehr',
     intro: 'Einstellungen – das meiste gilt nur für dieses Gerät.',
     items: [
-      ['👥 Gruppe', 'dein Name (erscheint als „von …“ auf dem Zettel), Mitglieder, Gruppen-Code. Admins verwalten Mitglieder und Einladungen.'],
+      ['👥 Gruppe', 'dein Name (erscheint als „von …“ auf dem Zettel), Mitglieder mit letztem Besuch, Gruppen-Code. Admins benennen und entfernen Mitglieder und erzeugen einen neuen Code.'],
       ['📍 Gebiet & Händler', 'Wohnort mit Umkreis, optional eine Strecke (z.B. Arbeitsweg) und die Händler – gilt für die ganze Gruppe (legt der Admin fest).'],
       ['🔎 Filter', 'welche Apps/Kundenkarten du nutzt (sonst zählt der Normalpreis), Kategorien ausblenden, einzelne Märkte wählen oder „Keiner“, Online- und Vorschau-Angebote.'],
       ['🎨 Darstellung', 'Farbschema, Start-Tab und 🔔 Benachrichtigung bei neuen Favoriten-Angeboten (nach dem Abruf um 5 und 14 Uhr, mit Zahl am App-Symbol).'],
@@ -2635,12 +2639,14 @@ const TOUR_MOCK = {
       <span class="chip">Lindt <i>1</i></span><span class="chip">Ritter Sport <i>3</i></span></div>
     <div class="chips wrap grp-acts"><span class="btn act-fav tk-fav tm-tap t3"><span class="tk-a">☆ Auswahl merken</span><span class="tk-b">★ Gemerkt</span></span>
       <span class="btn act-list">＋ Zettel</span></div></div>`,
-  // Sortierung umschalten: die Reihenfolge der Angebote ändert sich mit
-  alle: () => `<div class="tour-mock tm-alle"><div class="tm-cap">Beispiel: Sortierung umschalten</div>
-    <div class="sortbar"><span>3 Angebote</span><div class="seg"><button class="ta-1">Grundpreis</button><button class="ta-2">Preis</button><button class="ta-3">Rabatt</button></div></div>
-    <div class="ta-list">${[['ta-a', '🧀', 'Gouda am Stück', '1,49 €', '5,96 €/kg', '−20 %'], ['ta-b', '🧀', 'Frischkäse', '0,99 €', '9,90 €/kg', '−40 %'],
-      ['ta-c', '🧀', 'Käse XXL', '2,49 €', '4,15 €/kg', '−10 %']].map(([c, i, n, p, u, d]) =>
-      `<div class="ta-row ${c}"><span>${i}</span><b>${n}</b><span class="ta-u">${u}</span><span class="ta-p">${p}</span><span class="ta-d">${d}</span></div>`).join('')}</div></div>`,
+  // Alle: Sprung-Chip zur Kategorie, dann 🔥 Top-Angebote an – die Liste wechselt
+  alle: () => `<div class="tour-mock tm-alle"><div class="tm-cap">Beispiel: zur Kategorie springen, Top-Angebote</div>
+    <div class="ta-head"><b>🏷️ Alle Angebote</b><span class="btn small ta-top tm-tap t2">🔥 Top-Angebote</span></div>
+    <div class="chips pick ta-jump"><span class="chip">🥦 Obst & Gemüse <i>238</i></span><span class="chip tm-tap t1 ta-j">🧀 Käse <i>193</i></span></div>
+    <div class="ta-lists"><div class="ta-l1"><div class="ta-cat">🧀 Käse</div>${[['Gouda am Stück', '5,96 €/kg', '−20 %'], ['Frischkäse', '9,90 €/kg', '−40 %']].map(([n, u, d]) =>
+      `<div class="ta-row2"><b>${n}</b><span>${u}</span><span class="ta-d">${d}</span></div>`).join('')}</div>
+      <div class="ta-l2">${[['Frischkäse', '9,90 €/kg', '−40 %'], ['Weintrauben', '2,49 €/kg', '−38 %'], ['Kaffee Crema', '11,98 €/kg', '−33 %']].map(([n, u, d]) =>
+      `<div class="ta-row2"><b>${n}</b><span>${u}</span><span class="ta-d">${d}</span></div>`).join('')}</div></div></div>`,
   // Favorit mit Preis-Leiste; antippen klappt die Angebote auf
   fav: () => `<div class="tour-mock tm-fav"><div class="tm-cap">Beispiel: Favorit aufklappen</div>
     <div class="tf-box"><div class="tf-h tm-tap t1"><span style="font-size:18px">🧈</span><span class="tf-t"><b>Butter <span class="new">2 neu</span></b><small>Milch & Molkerei · 3 Angebote</small></span>
@@ -2669,8 +2675,9 @@ const TOUR = [
       'Gelb <b>☆ Gruppe merken</b> = als Favorit, grün <b>＋ Zettel</b> = auf den Einkaufszettel.',
       'Verglichen wird nach <b>Grundpreis</b> (€/kg, €/l) – so sind verschiedene Packungen vergleichbar.'], mock: 'kat' },
   { tab: 1, ico: '🏷️', title: 'Alle & Suche',
-    text: 'Alle Angebote in einer Liste – sortiert nach Grundpreis, Preis oder Rabatt.',
-    points: ['Die <b>Suche</b> oben gilt überall, z.B. „Butter“ oder „Jacobs Kaffee“.',
+    text: 'Alle Angebote in einer Liste, nach Kategorien gegliedert. <b>🔥 Top-Angebote</b> zeigt nur die mit mindestens 30 % Rabatt.',
+    points: ['Die Chips oben <b>springen</b> zur jeweiligen Kategorie.',
+      'Die <b>Suche</b> oben gilt überall, z.B. „Butter“ – die Treffer lassen sich nach Grundpreis, Preis oder Rabatt sortieren.',
       '<b>📱</b> = Preis nur mit Händler-App; unter Mehr → Filter wählst du, welche Apps du nutzt.',
       'Angebot <b>antippen</b>: Details mit Märkten, Preisverlauf und Preis-Leiste.'], mock: 'alle' },
   { tab: 1, ico: '👉', title: 'Wischen statt Knöpfe',
@@ -2685,7 +2692,7 @@ const TOUR = [
       'Nach links wischen entfernt einen Favoriten, <b>⋮</b> öffnet seine Einstellungen (z.B. Preisalarm).'], mock: 'fav' },
   { tab: 3, ico: '📝', title: 'Einkaufszettel',
     text: 'Einfach eintippen, z.B. „3 l Milch“. Der Zettel ist für alle in der Gruppe derselbe.',
-    points: ['<b>Rechts wischen</b> = abhaken, <b>links wischen</b> = löschen, <b>antippen</b> = bearbeiten.',
+    points: ['<b>Rechts wischen</b> = abhaken, <b>links wischen</b> = löschen, <b>antippen</b> = Menge ändern, ⚙️ = bearbeiten.',
       'In der Ansicht „Details“ zeigt <b>💡 im Angebot</b>, wo es etwas gibt; <b>lange drücken</b> listet die Angebote – nach rechts wischen ersetzt den Eintrag.',
       'Der <b>Verlauf</b> merkt sich, was ihr schon gekauft habt.'], mock: 'zettel' },
   { tab: 4, ico: '⚙️', title: 'Mehr',

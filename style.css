@@ -773,3 +773,18 @@ details.mk summary .muted { font-size: .85rem; margin-left: auto; }
   .tf-open, .tz-h { max-height: none; opacity: 1; }
 }
 .tm-kat .chip i { color: inherit; opacity: .75; }
+/* Rundgang „Alle“: Sprung-Chip und Top-Angebote */
+.ta-head { display: flex; align-items: center; justify-content: space-between; margin: 2px 10px 0; font-size: .9rem; }
+.tm-alle .ta-top { animation: taTop var(--tc) infinite; }
+@keyframes taTop { 0%, 40% { background: var(--surface); color: var(--text); } 42%, 92% { background: var(--accent); color: var(--accent-text); border-color: var(--accent); } 96%, 100% { background: var(--surface); color: var(--text); } }
+.tm-alle .ta-j { animation: tkOn1 var(--tc) infinite; }
+.tm-alle .ta-j i { color: inherit; opacity: .75; }
+.ta-lists { display: grid; margin: 4px 10px 0; }
+.ta-lists > div { grid-area: 1 / 1; }
+.ta-l1 { animation: taL1 var(--tc) infinite; } .ta-l2 { animation: taL2 var(--tc) infinite; opacity: 0; }
+@keyframes taL1 { 0%, 14% { opacity: .35; } 18%, 40% { opacity: 1; } 43%, 94% { opacity: 0; } 97%, 100% { opacity: .35; } }
+@keyframes taL2 { 0%, 40% { opacity: 0; } 43%, 94% { opacity: 1; } 97%, 100% { opacity: 0; } }
+.ta-cat { font-size: .72rem; color: var(--muted); text-transform: uppercase; margin: 2px 0; }
+.ta-row2 { display: flex; gap: 8px; align-items: center; height: 26px; padding: 0 8px; margin-bottom: 4px; background: var(--surface);
+  border-radius: 8px; box-shadow: var(--shadow); font-size: .8rem; }
+.ta-row2 b { flex: 1; font-weight: 600; } .ta-row2 span { color: var(--muted); font-size: .76rem; } .ta-row2 .ta-d { color: var(--red); font-weight: 700; }
