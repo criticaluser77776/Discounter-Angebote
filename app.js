@@ -1076,7 +1076,7 @@ async function renderFavSearch() {
   const word = t => x => norm(x).split(/[^a-z0-9]+/).some(w => w.startsWith(t));
   const groupHits = [];
   for (const c of S.categories) for (const g of groupsOf(c)) if (g !== OTHER && qt.some(t => t.length >= 3 && word(t)(g))) groupHits.push([c, g]);
-  // Vorschläge für die Eingrenzung aus den Treffern + freie Wahl über die Liste aller Kategorien/Gruppen
+  // Eingrenzung nach Produktgruppe aus den Treffern
   const fcnt = countBy(hits, e => e.category + '\u0001' + e.group);
   const facets = Object.entries(fcnt).sort((a, b) => b[1] - a[1]);
   if (S.qFacet && !fcnt[S.qFacet]) facets.unshift([S.qFacet, 0]);
@@ -1085,16 +1085,12 @@ async function renderFavSearch() {
   const facetName = k => { const [c, g] = k.split('\u0001'); return g ? (g === OTHER ? `${c} · Weitere` : g) : `${c} (ganze Kategorie)`; };
   let h = `<div class="head"><h2>„${esc(S.q)}“</h2>
     <button class="btn small act-fav ${has ? 'on' : ''}" data-act="searchFav">${has ? '★ Gemerkt' : '☆ Als Favorit merken'}</button></div>
-    <p class="sub">Suche im ganzen Produktkatalog – auch Produkte, die gerade nicht im Angebot sind. Eingrenzen ist freiwillig;
-      jede Kategorie und jede Marke ist wählbar. Aktuell passen <b>${nNow}</b> Angebote.</p>`;
+    <p class="sub">Suche im ganzen Produktkatalog – auch Produkte, die gerade nicht im Angebot sind. Eingrenzen ist freiwillig.
+      Aktuell passen <b>${nNow}</b> Angebote.</p>`;
   h += `<p class="sub">Produktgruppe:</p><div class="chips wrap pick">
     <button class="chip ${S.qFacet ? '' : 'on'}" data-act="facet" data-k="">Alle</button>` +
     facets.slice(0, 16).map(([k, n]) => `<button class="chip ${S.qFacet === k ? 'on' : ''}" data-act="facet" data-k="${esc(k)}">${ICONS[k.split('\u0001')[0]] || ''} ${esc(facetName(k))}${n ? ` <i>${n}</i>` : ''}</button>`).join('') +
-    `</div><label class="fs-any">Andere Kategorie / Produktgruppe:
-      <select data-fsfacet><option value="">– frei wählen –</option>${S.categories.map(c => `<optgroup label="${esc(c)}">
-        <option value="${esc(c + '\u0001')}" ${S.qFacet === c + '\u0001' ? 'selected' : ''}>${esc(c)} (ganze Kategorie)</option>
-        ${groupsOf(c).map(g => `<option value="${esc(c + '\u0001' + g)}" ${S.qFacet === c + '\u0001' + g ? 'selected' : ''}>${esc(g === OTHER ? 'Weitere' : g)}</option>`).join('')}</optgroup>`).join('')}
-      </select></label>`;
+    '</div>';
   // Marken: aus den Treffern, bekannte Marken zur gewählten Gruppe und Marken, deren Name zur Suche passt
   const brands = new Map();
   for (const e of hits.filter(inFacet)) {
@@ -2228,7 +2224,6 @@ document.addEventListener('click', e => {
 
 document.addEventListener('change', e => {
   const el = e.target;
-  if ('fsfacet' in el.dataset) { S.qFacet = el.value || null; S.qBrands.clear(); rerender(); return; }  // Favoriten-Suche: freie Gruppe
   if ('setName' in el.dataset) {
     Cloud.setName(el.value);
     liFavsPush(S.favs);  // Favoriten unter dem neuen Namen abgleichen
@@ -2668,7 +2663,7 @@ const GUIDE = [
     intro: 'Was du regelmäßig kaufst – die App zeigt, wo es gerade im Angebot ist.',
     items: [
       ['＋ Hinzufügen', 'Kategorie und Produktgruppe wählen, Marken markieren. Hier gibt es auch Marken, die gerade nicht im Angebot sind (z.B. für später).'],
-      ['🔍 Suche', 'oben im Reiter Favoriten sucht im ganzen Produktkatalog, auch nach Produkten ohne aktuelles Angebot. Produktgruppe und Marke sind frei wählbar – über „Andere Kategorie / Produktgruppe“ jede Kategorie, auch wenn die Suche dort nichts findet. „☆ Als Favorit merken“ speichert Suchbegriff mit Auswahl; einzelne Produkte merkst du mit ☆.'],
+      ['🔍 Suche', 'oben im Reiter Favoriten sucht im ganzen Produktkatalog, auch nach Produkten ohne aktuelles Angebot. Eingrenzen nach Produktgruppe und Marke ist freiwillig. „☆ Als Favorit merken“ speichert Suchbegriff mit Auswahl; einzelne Produkte merkst du mit ☆.'],
       ['Favorit antippen', 'klappt die passenden Angebote auf, das günstigste steht oben. „neu“ = noch nicht gesehene Angebote.'],
       ['Preis-Leiste', 'grün = günstig, rot = teuer im Vergleich der letzten 12 Monate. Der Strich in der Mitte ist der Durchschnitt, der Punkt das beste aktuelle Angebot.'],
       ['⋮ Einstellungen', 'Name, Vergleich nach Grundpreis oder Packungspreis (z.B. Kaffeekapseln), Preisalarm „max. … €“.'],
