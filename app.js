@@ -583,8 +583,9 @@ function cardPrice(o, metric) {
   const main = byPack ? `${fmt(o.ep)} €` : `${ab}${fmt(o.eu)} €/${esc(o.unit)}`;
   const sub = byPack ? (o.eu ? `${ab}${fmt(o.eu)} €/${esc(o.unit)}` : '') : `${fmt(o.ep)} €`;
   const np = o.ea ? normalPrice(o) : null;
+  // Normalpreis ohne App als eigene kleine Zeile (sonst zu breit auf dem Handy)
   return `<div class="cprice"><b class="${o.ea ? 'is-app' : ''}">${o.ea ? '📱 ' : ''}${main}</b>
-    <small>${sub}${np != null ? ` · ohne App ${fmt(np)} €` : ''}</small></div>`;
+    ${sub ? `<small>${sub}</small>` : ''}${np != null ? `<small class="np">ohne App ${fmt(np)} €</small>` : ''}</div>`;
 }
 
 function card(o, opts = {}) {

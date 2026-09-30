@@ -644,3 +644,8 @@ details.mk summary .muted { font-size: .85rem; margin-left: auto; }
 .ubar small, .u-out small { color: var(--muted); font-size: .78rem; display: block; }
 .u-out { margin-top: 12px; padding: 8px 10px; border-radius: 8px; background: var(--surface-2); font-size: .88rem; }
 .u-out ul { margin: 4px 0; padding-left: 18px; }
+/* Preisspalte: Zeilen untereinander statt einer langen Zeile; Infospalte schneidet ab statt unter den Preis zu laufen */
+.card .info { min-width: 0; overflow: hidden; }
+.card .meta { overflow: hidden; }
+.cprice { gap: 1px; }
+.cprice small.np { font-size: .72rem; }
