@@ -679,8 +679,9 @@ function liBody() {
   const order = new Map(liCats().map((c, i) => [c.id, i]));
   const catRank = it => order.get(catInfo(it.cat).id) ?? 9999;
   let total = 0, priced = 0;
+  // Summe nur aus konkreten Preisen (Angebot oder von Hand) – Bestpreise der Favoriten-Wünsche zählen nicht mit
   for (const it of open) {
-    const p = liPrice(it, best.get(it.id));
+    const p = it.kind === 'offer' || it.price != null ? liPrice(it) : null;
     if (p) { total += p.total; priced++; }
   }
   const sum = $('#liSum');
