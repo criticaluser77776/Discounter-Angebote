@@ -1354,6 +1354,7 @@ function liShowOffers(it) {
         if (sw !== s0 || s0.active) return;
         s0.long = true;
         LI.suppress = Date.now() + 10e3;  // folgenden Klick (Bearbeiten) unterdrücken, bis losgelassen
+        window.getSelection?.().removeAllRanges();  // evtl. schon begonnene Textmarkierung aufheben
         liShowOffers(it);
       }, 500);
     }

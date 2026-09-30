@@ -680,3 +680,5 @@ details.mk summary .muted { font-size: .85rem; margin-left: auto; }
 @keyframes tourSwipe { 0%, 15% { transform: translateX(0); } 45%, 65% { transform: translateX(48%); } 90%, 100% { transform: translateX(0); } }
 @media (prefers-reduced-motion: reduce) { .tour-demo .td-card { animation: none; transform: translateX(45%); } }
 .wiz { padding: 0 16px; }
+/* Karten und Favoriten-Köpfe: kein Markieren beim langen Drücken/Wischen (auch im Fenster „Angebote zu …“) */
+.card, .fav-h, .sheet-body .li-sheet-h { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
