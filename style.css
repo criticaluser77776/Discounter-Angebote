@@ -788,3 +788,6 @@ details.mk summary .muted { font-size: .85rem; margin-left: auto; }
 .ta-row2 { display: flex; gap: 8px; align-items: center; height: 26px; padding: 0 8px; margin-bottom: 4px; background: var(--surface);
   border-radius: 8px; box-shadow: var(--shadow); font-size: .8rem; }
 .ta-row2 b { flex: 1; font-weight: 600; } .ta-row2 span { color: var(--muted); font-size: .76rem; } .ta-row2 .ta-d { color: var(--red); font-weight: 700; }
+/* Top-Angebote: ohne Sprung-Chips (wie in der App) */
+.tm-alle .ta-jump { animation: taJump var(--tc) infinite; }
+@keyframes taJump { 0%, 40% { opacity: 1; } 43%, 94% { opacity: 0; } 97%, 100% { opacity: 1; } }

@@ -2645,7 +2645,7 @@ const TOUR_MOCK = {
     <div class="chips pick ta-jump"><span class="chip">🥦 Obst & Gemüse <i>238</i></span><span class="chip tm-tap t1 ta-j">🧀 Käse <i>193</i></span></div>
     <div class="ta-lists"><div class="ta-l1"><div class="ta-cat">🧀 Käse</div>${[['Gouda am Stück', '5,96 €/kg', '−20 %'], ['Frischkäse', '9,90 €/kg', '−40 %']].map(([n, u, d]) =>
       `<div class="ta-row2"><b>${n}</b><span>${u}</span><span class="ta-d">${d}</span></div>`).join('')}</div>
-      <div class="ta-l2">${[['Frischkäse', '9,90 €/kg', '−40 %'], ['Weintrauben', '2,49 €/kg', '−38 %'], ['Kaffee Crema', '11,98 €/kg', '−33 %']].map(([n, u, d]) =>
+      <div class="ta-l2"><div class="ta-cat">🔥 ab 30 % Rabatt</div>${[['Weintrauben', '2,49 €/kg', '−45 %'], ['Duschgel', '3,98 €/l', '−38 %'], ['Kaffee Crema', '11,98 €/kg', '−33 %']].map(([n, u, d]) =>
       `<div class="ta-row2"><b>${n}</b><span>${u}</span><span class="ta-d">${d}</span></div>`).join('')}</div></div></div>`,
   // Favorit mit Preis-Leiste; antippen klappt die Angebote auf
   fav: () => `<div class="tour-mock tm-fav"><div class="tm-cap">Beispiel: Favorit aufklappen</div>
