@@ -463,7 +463,7 @@ function liTakePrio() {
 
 const offerSnap = o => ({
   id: o.id, retailer: o.retailer, brand: o.brand, title: o.name || o.title, price: o.ep, unit_price: o.eu,
-  unit: o.unit, valid_to: o.valid_to, app: o.ea ? appName(o) : '', category: o.category,
+  unit: o.unit, valid_to: o.valid_to, app: o.ea ? appName(o) : '', category: o.category, image: o.image || '',
 });
 const liOfferItem = o => liOpen().find(i => i.kind === 'offer' && i.offer?.id === o.id);
 
@@ -628,11 +628,19 @@ function liRow(it, best) {
   if (!liSimple() && Cloud.enabled && it.by && it.by !== Cloud.name()) sub.push(`von ${esc(it.by)}`);
   const q = qtyLabel(it);
   const qe = LI.qtyId === it.id && !it.done;  // angetippt: Menge als Textfeld, ⚙️ statt Abhaken
+  // konkrete Angebote: Artikelbild statt Kategorie-Symbol, Name einzeilig gekürzt
+  const offer = it.kind === 'offer';
+  const img = offer && (it.offer.image || S.byId.get(it.offer.id)?.image);
+  const prio = it.prio && !it.done ? '<b class="li-prio" title="wichtig">❗</b>' : '';
+  const nameHtml = offer
+    ? `<span class="li-l1"><span class="li-nm" title="${esc(it.name)}">${prio}${esc(it.name)}</span>${it.note ? liNoteHtml(it, 'ico') : ''}</span>${it.note ? liNoteHtml(it, 'text') : ''}`
+    : `${prio}${esc(it.name)}${it.note ? liNoteHtml(it) : ''}`;
   return `<div class="li-row${it.done ? ' done' : ''}${it.prio && !it.done ? ' prio' : ''}" data-lid="${it.id}">
     <div class="li-bg"><span class="li-bg-done">✓ ${it.done ? 'zurück' : 'erledigt'}</span><span class="li-bg-del">Löschen 🗑</span></div>
     <div class="li-fg">
-      <span class="li-ico" style="--c:${c.color}" title="${esc(c.name)}">${c.emoji}</span>
-      <div class="li-t" data-act="liEdit" data-lid="${it.id}">${it.prio && !it.done ? '<b class="li-prio" title="wichtig">❗</b>' : ''}${esc(it.name)}${it.note ? liNoteHtml(it) : ''}${sub.length ? `<small>${sub.join(' · ')}</small>` : ''}</div>
+      ${img ? `<span class="li-ico li-img" style="--c:${c.color}" title="${esc(c.name)}"><img loading="lazy" referrerpolicy="no-referrer" src="${esc(img)}" alt="" onerror="this.replaceWith('${c.emoji}')"></span>`
+        : `<span class="li-ico" style="--c:${c.color}" title="${esc(c.name)}">${c.emoji}</span>`}
+      <div class="li-t" data-act="liEdit" data-lid="${it.id}">${nameHtml}${sub.length ? `<small>${sub.join(' · ')}</small>` : ''}</div>
       ${qe ? `<input class="li-qin" data-liq="text" data-lid="${it.id}" value="${esc(q)}" placeholder="Menge" enterkeyhint="done" aria-label="Menge, z.B. 2 kg">`
         : q ? `<span class="li-q">${esc(q)}</span>` : ''}
       ${p && !qe ? liPriceHtml(it, best, p) : ''}
@@ -642,10 +650,11 @@ function liRow(it, best) {
 }
 
 // Notiz: kleines 🗒️ hinter dem Namen (in beiden Ansichten), antippen klappt den Text darunter auf/zu
-function liNoteHtml(it) {
+function liNoteHtml(it, part) {
   const open = LI.noteOpen.has(it.id);
+  if (part === 'text') return open ? `<span class="li-note">${esc(it.note)}</span>` : '';
   return `<button class="li-note-ico${open ? ' on' : ''}" data-act="liNote" data-lid="${it.id}" aria-label="Notiz ${open ? 'zuklappen' : 'anzeigen'}" aria-expanded="${open}">🗒️</button>` +
-    (open ? `<span class="li-note">${esc(it.note)}</span>` : '');
+    (open && part !== 'ico' ? `<span class="li-note">${esc(it.note)}</span>` : '');
 }
 
 // Mengenfeld: „2,5 kg“, „3“, „3x“, „2 Pck“ → Menge + Einheit (bekannte Einheiten vereinheitlicht)
