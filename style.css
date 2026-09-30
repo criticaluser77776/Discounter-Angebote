@@ -318,6 +318,7 @@ main { max-width: 1100px; margin: 0 auto; }
 .li-l1 { display: flex; align-items: center; min-width: 0; }
 .li-nm { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .li-l1 .li-note-ico { flex: none; }
+.li-orig { font-weight: 700; }
 .li-t small { display: block; color: var(--muted); font-size: .78rem; line-height: 1.35; }
 .li-t .rt { font-size: .78rem; }
 .li-hint { color: var(--blue); }

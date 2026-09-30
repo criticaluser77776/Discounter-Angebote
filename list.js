@@ -506,10 +506,12 @@ const Li = {
     const before = JSON.parse(JSON.stringify(it));
     const { fav, ...rest } = it;
     const name = `${o.brand ? o.brand + ' ' : ''}${o.name || o.title}`;
-    const next = { ...rest, kind: 'offer', name, offer: offerSnap(o), price: null, pm: null };
+    // ursprünglichen Eintrag merken, er steht in der Zeile vorne („Schinken · Montorsi Prosciutto …“)
+    const orig = it.kind === 'offer' ? it.orig : it.name;
+    const next = { ...rest, kind: 'offer', name, orig: orig || undefined, offer: offerSnap(o), price: null, pm: null };
     put('item', next);
     liRemember(next);
-    toast(`„${before.name}“ ersetzt: ${name}`, { label: 'Rückgängig', fn: () => { put('item', before); liRefresh(); } });
+    toast(`„${before.name}“ ersetzt: ${name.length > 40 ? name.slice(0, 38).trimEnd() + ' …' : name}`, { label: 'Rückgängig', fn: () => { put('item', before); liRefresh(); } });
     liRefresh();
   },
   toggleOffer(o, prio = false) {
@@ -633,7 +635,7 @@ function liRow(it, best) {
   const img = offer && (it.offer.image || S.byId.get(it.offer.id)?.image);
   const prio = it.prio && !it.done ? '<b class="li-prio" title="wichtig">❗</b>' : '';
   const nameHtml = offer
-    ? `<span class="li-l1"><span class="li-nm" title="${esc(it.name)}">${prio}${esc(it.name)}</span>${it.note ? liNoteHtml(it, 'ico') : ''}</span>${it.note ? liNoteHtml(it, 'text') : ''}`
+    ? `<span class="li-l1"><span class="li-nm" title="${esc(it.orig ? `${it.orig} · ${it.name}` : it.name)}">${prio}${it.orig ? `<span class="li-orig">${esc(it.orig)}</span> · ` : ''}${esc(it.name)}</span>${it.note ? liNoteHtml(it, 'ico') : ''}</span>${it.note ? liNoteHtml(it, 'text') : ''}`
     : `${prio}${esc(it.name)}${it.note ? liNoteHtml(it) : ''}`;
   return `<div class="li-row${it.done ? ' done' : ''}${it.prio && !it.done ? ' prio' : ''}" data-lid="${it.id}">
     <div class="li-bg"><span class="li-bg-done">✓ ${it.done ? 'zurück' : 'erledigt'}</span><span class="li-bg-del">Löschen 🗑</span></div>
