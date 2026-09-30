@@ -624,3 +624,12 @@ details.mk summary .muted { font-size: .85rem; margin-left: auto; }
 .meta .also { font-weight: 400; color: var(--muted); margin-left: 4px; }
 .meta .size { font-weight: 600; color: var(--text); white-space: nowrap; }
 .mk-all { margin: 6px 0 2px; }
+/* Kategorie-Ansicht: Trennung Produktgruppen / Marken, Aktionen farblich unterscheidbar */
+.chips-sep { display: flex; align-items: center; gap: 8px; margin: 8px auto 0; padding: 0 16px; max-width: 1100px; font-size: .75rem; color: var(--muted);
+  text-transform: uppercase; letter-spacing: .04em; }
+.chips-sep::before, .chips-sep::after { content: ''; flex: 1; height: 1px; background: var(--line); }
+.chips-sep::before { flex: 0 0 12px; }
+.grp-acts { margin-top: 6px; }
+.btn.act-fav { border-color: var(--star); color: var(--amber); background: color-mix(in srgb, var(--star) 12%, var(--surface)); }
+.btn.act-fav.on { background: var(--star); border-color: var(--star); color: #1b1300; }
+.btn.act-list { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }

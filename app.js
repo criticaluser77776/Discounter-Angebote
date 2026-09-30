@@ -734,16 +734,17 @@ function renderCategory(cat, group) {
     // gewählte Marken ohne aktuelles Angebot trotzdem zeigen (zum Abwählen), z.B. aus der Favoriten-Auswahl
     for (const k of S.brands) if (!brands.some(b => b.key === k)) brands.push({ key: k, name: KNOWN_NAME.get(k) || k, n: 0, type: KNOWN_RET.has(k) ? 'eigen' : 'marke' });
     sortBrands(brands);
-    h += `<div class="chips wrap pick"><button class="chip ${S.brandOnly ? 'on' : ''}" data-act="brandOnly">Nur Markenprodukte</button>` +
+    h += `<div class="chips-sep"><span>Marken</span></div>
+      <div class="chips wrap pick"><button class="chip ${S.brandOnly ? 'on' : ''}" data-act="brandOnly">Nur Markenprodukte</button>` +
       brands.map(b => `<button class="chip ${S.brands.has(b.key) ? 'on' : ''}" data-act="brand" data-b="${esc(b.key)}">${esc(b.name)} <i>${b.n}</i></button>`).join('') + '</div>';
     if (S.brandOnly) list = list.filter(o => o.brand_type === 'marke');
     if (S.brands.size) list = list.filter(o => brandHit({ brands: [...S.brands] }, o));  // wie beim Favoriten (auch Titel)
     const ex = findFav({ type: 'group', category: cat, group });
     const same = ex && JSON.stringify(ex.brands || []) === JSON.stringify([...S.brands].sort()) && !!ex.brandOnly === S.brandOnly;
     const label = ex ? (same ? '★ Gemerkt' : '★ Auswahl übernehmen') : (S.brands.size ? '☆ Auswahl merken' : '☆ Gruppe merken');
-    h += `<div class="chips wrap">
-      <button class="btn ${ex ? 'on' : ''}" data-act="groupFav" data-c="${esc(cat)}" data-g="${esc(group)}">${label}</button>
-      <button class="btn" data-act="groupWish" data-c="${esc(cat)}" data-g="${esc(group)}">＋ Zettel</button>
+    h += `<div class="chips wrap grp-acts">
+      <button class="btn act-fav ${ex ? 'on' : ''}" data-act="groupFav" data-c="${esc(cat)}" data-g="${esc(group)}">${label}</button>
+      <button class="btn act-list" data-act="groupWish" data-c="${esc(cat)}" data-g="${esc(group)}">＋ Zettel</button>
       <a class="btn" href="#/add/${enc(cat)}/${enc(group)}">Marken & Produkte ›</a></div>`;
   }
   h += sortbar(list.length) + offerList(sortOffers(list), { heads: false });  // Kategorien: ohne Zwischenüberschriften je Einheit
