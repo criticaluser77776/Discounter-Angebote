@@ -654,3 +654,29 @@ details.mk summary .muted { font-size: .85rem; margin-left: auto; }
 .li-sheet-h { margin: 4px 0 2px; padding: 0 16px; font-size: 1.1rem; }
 .sw-hint.repl { background: color-mix(in srgb, var(--accent) 35%, var(--surface)); }
 .sw-hint.repl.go { background: var(--accent); color: var(--accent-text); }
+/* Anleitung (Mehr → Anleitung) */
+.guide-sec { border-top: 1px solid var(--line); padding: 8px 0; }
+.guide-sec:first-child { border-top: 0; }
+.guide-sec summary { display: flex; gap: 10px; align-items: center; cursor: pointer; list-style: none; }
+.guide-sec summary::-webkit-details-marker { display: none; }
+.guide-sec summary::after { content: '›'; margin-left: auto; color: var(--muted); transition: transform .15s; }
+.guide-sec[open] summary::after { transform: rotate(90deg); }
+.guide-sec summary small { display: block; color: var(--muted); font-size: .8rem; }
+.gs-i { font-size: 22px; width: 28px; text-align: center; flex: none; }
+.guide-sec ul { margin: 8px 0 4px; padding-left: 20px; font-size: .9rem; }
+.guide-sec li { margin: 5px 0; }
+/* Einführung: Rundgang */
+.tour-pts { padding-left: 20px; }
+.tour-pts li { margin: 6px 0; }
+.tour-demo { position: relative; height: 64px; margin: 12px 0; border-radius: var(--radius); overflow: hidden;
+  display: grid; grid-template-rows: 1fr 1fr; gap: 2px; background: var(--line); }
+.tour-demo .td-z, .tour-demo .td-w { display: flex; align-items: center; padding-left: 12px; font-size: .85rem; font-weight: 700; }
+.tour-demo .td-z { background: var(--accent); color: var(--accent-text); }
+.tour-demo .td-w { background: color-mix(in srgb, var(--star) 50%, var(--surface)); }
+.tour-demo .td-card { position: absolute; inset: 0; display: flex; align-items: center; gap: 10px; padding: 0 12px;
+  background: var(--surface); border-radius: var(--radius); box-shadow: var(--shadow); animation: tourSwipe 2.6s ease-in-out infinite; }
+.td-card small { display: block; color: var(--muted); font-size: .78rem; }
+.td-th { font-size: 26px; } .td-p { margin-left: auto; color: var(--accent); }
+@keyframes tourSwipe { 0%, 15% { transform: translateX(0); } 45%, 65% { transform: translateX(48%); } 90%, 100% { transform: translateX(0); } }
+@media (prefers-reduced-motion: reduce) { .tour-demo .td-card { animation: none; transform: translateX(45%); } }
+.wiz { padding: 0 16px; }
