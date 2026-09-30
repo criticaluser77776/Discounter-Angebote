@@ -645,7 +645,7 @@ function liRow(it, best) {
 function liNoteHtml(it) {
   const open = LI.noteOpen.has(it.id);
   return `<button class="li-note-ico${open ? ' on' : ''}" data-act="liNote" data-lid="${it.id}" aria-label="Notiz ${open ? 'zuklappen' : 'anzeigen'}" aria-expanded="${open}">🗒️</button>` +
-    (open ? `<span class="li-note"><span class="li-note-t">${esc(it.note)}</span><button class="li-note-del" data-act="liNoteDel" data-lid="${it.id}" aria-label="Notiz löschen">🗑</button></span>` : '');
+    (open ? `<span class="li-note">${esc(it.note)}</span>` : '');
 }
 
 // Mengenfeld: „2,5 kg“, „3“, „3x“, „2 Pck“ → Menge + Einheit (bekannte Einheiten vereinheitlicht)
@@ -910,7 +910,8 @@ function liEditSheet(it) {
       <input data-li="qty" inputmode="decimal" value="${it.qty ? fmtQty(it.qty) : ''}" placeholder="–">
       <button type="button" class="ic" data-act="liQtyStep" data-d="1">＋</button>
       <select data-li="unit">${unitOpts}</select></div>
-    <label class="li-f">Notiz<input data-li="note" value="${esc(it.note || '')}" placeholder="z.B. laktosefrei, die grüne Packung"></label>
+    <label class="li-f">Notiz<span class="li-note-f"><input data-li="note" value="${esc(it.note || '')}" placeholder="z.B. laktosefrei, die grüne Packung">
+      ${it.note ? `<button type="button" class="btn li-note-del" data-act="liNoteDel" data-lid="${it.id}" aria-label="Notiz löschen">🗑</button>` : ''}</span></label>
     <label class="li-f">Kategorie<select data-li="cat">${catOpts}</select></label>
     <label class="li-f">Preis (€)<input data-li="price" inputmode="decimal" value="${it.price != null ? fmt(it.price) : ''}"
       placeholder="${auto != null ? 'aus Angebot: ' + fmt(auto) : 'optional'}"></label>
@@ -1094,15 +1095,16 @@ Object.assign(onClick, {
     liRefresh();
   },
   liNoteDel: el => {
-    if (swiped()) return;
+    // nur in der Bearbeitung (⚙️) des Eintrags
     const it = liById(el);
     if (!it?.note) return;
     const old = it.note;
+    const redo = () => { liRefresh(); if (LI.editId === it.id) liEditSheet(it); };
     it.note = '';
     put('item', it);
     LI.noteOpen.delete(it.id);
-    toast('Notiz gelöscht', { label: 'Rückgängig', fn: () => { it.note = old; put('item', it); LI.noteOpen.add(it.id); liRefresh(); } });
-    liRefresh();
+    toast('Notiz gelöscht', { label: 'Rückgängig', fn: () => { it.note = old; put('item', it); redo(); } });
+    redo();
   },
   liEdit: el => {
     if (swiped()) return;
