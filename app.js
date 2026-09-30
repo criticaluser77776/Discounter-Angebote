@@ -1160,7 +1160,7 @@ function marketsByRetailer() {
     // nur Märkte, deren Ort im Gebiet liegt (Zuordnung aus der Konfiguration; unbekannte Märkte bleiben drin)
     v.markets.filter(x => !S.area || !S.marketPlaces?.[x] || S.marketPlaces[x].some(p => S.area.has(p))).forEach(x => set.add(x));
   }
-  return Object.keys(S.retailers).filter(k => m[k]?.size > 1).map(k => [k, [...m[k]].sort((a, b) => shortMarket(a).localeCompare(shortMarket(b), 'de'))]);
+  return Object.keys(S.retailers).filter(k => m[k]?.size).map(k => [k, [...m[k]].sort((a, b) => shortMarket(a).localeCompare(shortMarket(b), 'de'))]);
 }
 function filterPanel() {
   const f = S.f, small = 'class="muted" style="margin:2px 0 8px;font-size:.85rem"';
@@ -1175,7 +1175,7 @@ function filterPanel() {
       <p ${small}>Markiert = wird angezeigt. Antippen blendet eine Kategorie aus.</p>
       <div class="chips wrap">${cats.map(c => `<button class="chip ${f.hideCats.includes(c) ? '' : 'on'}" data-act="fCat" data-c="${esc(c)}">${ICONS[c] || ''} ${esc(c)}</button>`).join('')}</div></div>
     <div class="panel"><h3>🏪 Märkte</h3>
-      <p ${small}>Nur für Händler mit Preisen je Markt. Keine Auswahl = alle Märkte im Gebiet, „Keiner“ blendet den Händler aus.</p>
+      <p ${small}>Händler mit Preisen je Markt. Keine Auswahl = alle Märkte im Gebiet, „Keiner“ blendet den Händler aus.</p>
       ${marketsByRetailer().map(([k, ms]) => {
         const sel = f.markets[k] || [], none = sel[0] === NO_MARKET;
         const info = none ? 'keiner' : sel.length ? `${sel.length} von ${ms.length} gewählt` : `alle ${ms.length}`;
@@ -1183,8 +1183,9 @@ function filterPanel() {
           <span class="muted">${info}</span></summary>
           <div class="chips wrap mk-all"><button class="chip ${!sel.length ? 'on' : ''}" data-act="fMkAll" data-r="${k}" data-v="all">Alle</button>
             <button class="chip ${none ? 'on' : ''}" data-act="fMkAll" data-r="${k}" data-v="none">Keiner</button></div>
-          ${ms.map(m => `<label class="line switch"><input type="checkbox" data-fmarket="${k}" value="${esc(m)}" ${sel.includes(m) ? 'checked' : ''}> ${esc(shortMarket(m))}</label>`).join('')}</details>`;
-      }).join('') || '<p class="muted">Keine Händler mit mehreren Märkten im Gebiet.</p>'}</div>`;
+          ${ms.length > 1 ? ms.map(m => `<label class="line switch"><input type="checkbox" data-fmarket="${k}" value="${esc(m)}" ${sel.includes(m) ? 'checked' : ''}> ${esc(shortMarket(m))}</label>`).join('')
+            : `<p class="muted" style="margin:2px 0 4px;font-size:.85rem">${esc(shortMarket(ms[0]))}</p>`}</details>`;
+      }).join('') || '<p class="muted">Keine Händler mit einzelnen Märkten im Gebiet.</p>'}</div>`;
 }
 
 // persönliche Filter gespeichert: Preise neu wählen, Mehr-Seite neu zeichnen (Scrollposition bleibt)
