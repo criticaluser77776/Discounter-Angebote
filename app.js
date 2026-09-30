@@ -1157,7 +1157,8 @@ function marketsByRetailer() {
   for (const v of S.offers.flatMap(o => o.variants)) {
     if (!v.markets?.length || !inGroup(v)) continue;
     const set = m[v.retailer] ||= new Set();
-    v.markets.forEach(x => set.add(x));
+    // nur Märkte, deren Ort im Gebiet liegt (Zuordnung aus der Konfiguration; unbekannte Märkte bleiben drin)
+    v.markets.filter(x => !S.area || !S.marketPlaces?.[x] || S.marketPlaces[x].some(p => S.area.has(p))).forEach(x => set.add(x));
   }
   return Object.keys(S.retailers).filter(k => m[k]?.size > 1).map(k => [k, [...m[k]].sort((a, b) => shortMarket(a).localeCompare(shortMarket(b), 'de'))]);
 }
@@ -2294,6 +2295,7 @@ async function loadData() {
     S.groups = j.groups;
     S.places = j.places;
     S.placeName = Object.fromEntries(j.places.map(p => [p.key, p.name]));
+    S.marketPlaces = j.market_places || {};
     applyArea();
     S.generated = j.generated;
     S.byId = new Map(S.offers.flatMap(o => o.variants.map(v => [v.id, o])));
