@@ -382,7 +382,9 @@ function liGuess(name) {
 
 // Verlauf (R.hist, je Name): bleibt dauerhaft – Löschen, Abhaken oder Leeren des Zettels entfernen nichts.
 // c = wie oft auf dem Zettel, b = wie oft gekauft (abgehakt), last/bought = zuletzt; Wünsche merken ihren Filter
+// konkrete Angebote kommen nicht in den Verlauf – bei ersetzten Einträgen zählt nur der ursprüngliche Eintrag
 function liRemember(it, when = Date.now()) {
+  if (!it || it.kind === 'offer') return;
   const k = nkey(it.name);
   if (!k) return;
   const h = R.hist.get(k) || { id: k, c: 0, b: 0 };
@@ -393,6 +395,11 @@ function liRemember(it, when = Date.now()) {
 }
 
 function liBought(it) {
+  if (it.kind === 'offer') {
+    if (!it.orig) return;
+    it = { name: it.orig, cat: it.cat, qty: it.qty, unit: it.unit };
+  }
+  if (!nkey(it.name)) return;
   const h = R.hist.get(nkey(it.name));
   if (!h) { liRemember(it); return liBought(it); }
   Object.assign(h, { b: (h.b || 0) + 1, bought: Date.now() });
@@ -406,6 +413,17 @@ function liHistDelete(h) {
   put('hist', h);
   liRefresh();
   toast(`Aus Verlauf entfernt: ${h.name}`, { label: 'Rückgängig', fn: () => { h.del = false; put('hist', h); liRefresh(); } });
+}
+
+function liHistOfferClean() {
+  if (load('li.histOfferClean', false)) return;
+  const own = new Set([...R.item.values()].filter(i => i.kind !== 'offer').map(i => nkey(i.name)));
+  for (const i of R.item.values()) if (i.orig) own.add(nkey(i.orig));
+  for (const i of R.item.values()) {
+    const h = i.kind === 'offer' && R.hist.get(nkey(i.name));
+    if (h && !h.del && !own.has(h.id)) { h.del = true; put('hist', h); }
+  }
+  save('li.histOfferClean', true);
 }
 
 function liHistBackfill() {
@@ -510,7 +528,6 @@ const Li = {
     const orig = it.kind === 'offer' ? it.orig : it.name;
     const next = { ...rest, kind: 'offer', name, orig: orig || undefined, offer: offerSnap(o), price: null, pm: null };
     put('item', next);
-    liRemember(next);
     toast(`„${before.name}“ ersetzt: ${name.length > 40 ? name.slice(0, 38).trimEnd() + ' …' : name}`, { label: 'Rückgängig', fn: () => { put('item', before); liRefresh(); } });
     liRefresh();
   },
@@ -523,7 +540,6 @@ const Li = {
     put('item', { id: liNewId(), kind: 'offer', name, qty: 1, unit: '', note: '', price: null, pm: null,
       cat: learned && !learned.del ? learned.cat : LI_OFFER_CAT[o.category] || 'sonstiges',
       offer: offerSnap(o), done: false, dt: null, by: Cloud.name(), prio });
-    liRemember(liOfferItem(o));
     toast(prio ? '❗ Wichtig auf den Einkaufszettel' : '＋ Auf den Einkaufszettel');
   },
   addWish(filter, label, parsed) {
@@ -1486,5 +1502,6 @@ window.addEventListener('hashchange', liWake);
 
 liLoad();
 liHistBackfill();
+liHistOfferClean();
 liFavsPush(S.favs);  // lokale Favoriten dieses Geräts einbringen (nur online und mit Namen)
 boot();
