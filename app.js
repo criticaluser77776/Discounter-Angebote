@@ -1092,6 +1092,12 @@ async function renderFavSearch() {
   const tiers = searchTiers(S.catalog, S.q, catOffer);
   const strongHits = tiers.res.filter(r => r[1]).map(r => r[0]);
   let hits = strongHits.length ? strongHits : tiers.res.map(r => r[0]);
+  // Zahlen = aktuelle Angebote wie bei der Suche unter Kategorien (ein Katalog-Produkt kann mehrere Angebote haben)
+  const offCnt = countBy(searchTiers(visible(), S.q).res.map(r => r[0]), o => o.product_key);
+  const nOff = Object.values(offCnt).reduce((a, b) => a + b, 0);
+  const inHits = new Set(hits.map(e => e.product_key));
+  for (const e of S.catalog) if (offCnt[e.product_key] && !inHits.has(e.product_key)) { hits.push(e); inHits.add(e.product_key); }
+  const oc = e => offCnt[e.product_key] || 0;
 
   const live = new Set(visible().map(o => o.product_key));
   const [fc, fg] = (S.qFacet || '').split('\u0001');
@@ -1101,16 +1107,17 @@ async function renderFavSearch() {
   const groupHits = [];
   for (const c of S.categories) for (const g of groupsOf(c)) if (g !== OTHER && qt.some(t => t.length >= 3 && word(t)(g))) groupHits.push([c, g]);
   // Eingrenzung nach Produktgruppe aus den Treffern
-  const fcnt = countBy(hits, e => e.category + '\u0001' + e.group);
-  const facets = Object.entries(fcnt).sort((a, b) => b[1] - a[1]);
-  if (S.qFacet && !fcnt[S.qFacet]) facets.unshift([S.qFacet, 0]);
+  const fcnt = {}, fprod = {};
+  for (const e of hits) { const k = e.category + '\u0001' + e.group; fcnt[k] = (fcnt[k] || 0) + oc(e); fprod[k] = (fprod[k] || 0) + 1; }
+  const facets = Object.entries(fcnt).sort((a, b) => b[1] - a[1] || fprod[b[0]] - fprod[a[0]]);
+  if (S.qFacet && fcnt[S.qFacet] == null) facets.unshift([S.qFacet, 0]);
   const fav = searchFavNow(), has = !!findFav(fav);
   const nNow = visible().filter(o => favMatch(fav, o)).length;
   const facetName = k => { const [c, g] = k.split('\u0001'); return g ? (g === OTHER ? `${c} · Weitere` : g) : `${c} (ganze Kategorie)`; };
   let h = `<div class="head"><h2>„${esc(S.q)}“</h2>
     <button class="btn small act-fav ${has ? 'on' : ''}" data-act="searchFav">${has ? '★ Gemerkt' : '☆ Als Favorit merken'}</button></div>
     <p class="sub">Suche im ganzen Produktkatalog – auch Produkte, die gerade nicht im Angebot sind. Eingrenzen ist freiwillig.
-      Aktuell passen <b>${nNow}</b> Angebote.</p>`;
+      Aktuell <b>${nOff}</b> Angebote gefunden${nNow !== nOff ? `, als Favorit gemerkt passen <b>${nNow}</b>` : ''}.</p>`;
   h += `<p class="sub">Produktgruppe:</p><div class="chips wrap pick">
     <button class="chip ${S.qFacet ? '' : 'on'}" data-act="facet" data-k="">Alle</button>` +
     facets.slice(0, 16).map(([k, n]) => `<button class="chip ${S.qFacet === k ? 'on' : ''}" data-act="facet" data-k="${esc(k)}">${ICONS[k.split('\u0001')[0]] || ''} ${esc(facetName(k))}${n ? ` <i>${n}</i>` : ''}</button>`).join('') +
@@ -1119,7 +1126,7 @@ async function renderFavSearch() {
   const brands = new Map();
   for (const e of hits.filter(inFacet)) {
     const b = brands.get(e.brand_key) || { key: e.brand_key, name: e.brand || 'Ohne Marke', type: e.brand_type, n: 0 };
-    b.n++; brands.set(e.brand_key, b);
+    b.n += oc(e); brands.set(e.brand_key, b);
   }
   if (fc && fg) for (const k of knownBrands(fc, fg)) if (!brands.has(k.key)) brands.set(k.key, { ...k, n: 0 });
   for (const [k, name] of KNOWN_NAME) if (!brands.has(k) && qt.some(t => t.length >= 3 && word(t)(name))) brands.set(k, { key: k, name, type: KNOWN_RET.has(k) ? 'eigen' : 'marke', n: 0 });
@@ -1131,13 +1138,13 @@ async function renderFavSearch() {
   if (groupHits.length) h += `<div class="chips-sep"><span>Passende Produktgruppen</span></div><div class="chips wrap pick">` +
     groupHits.slice(0, 20).map(([c, g]) => `<a class="chip ${findFav({ type: 'group', category: c, group: g }) ? 'faved' : ''}" href="#/add/${enc(c)}/${enc(g)}" data-act="fsGo">${ICONS[c] || ''} ${esc(g)}</a>`).join('') + '</div>';
   const prods = hits.filter(inFacet).filter(e => !S.qBrands.size || S.qBrands.has(e.brand_key))
-    .sort((a, b) => live.has(b.product_key) - live.has(a.product_key) || (a.name || '').localeCompare(b.name || '', 'de'));
-  h += `<div class="chips-sep"><span>Einzelne Produkte${prods.length ? ` (${prods.length})` : ''}</span></div>`;
+    .sort((a, b) => oc(b) - oc(a) || (a.name || '').localeCompare(b.name || '', 'de'));
+  h += `<div class="chips-sep"><span>Einzelne Produkte${prods.length ? ` (${prods.length})` : ''}${nOff ? ` · ${nOff} Angebote` : ''}</span></div>`;
   if (prods.length) h += tierNote(tiers.level);
   h += prods.length ? '<div class="fs-prods">' + prods.slice(0, 40).map(e => {
     const f = catalogProductFav(e), on = !!findFav(f);
     return `<button class="fs-prod ${on ? 'on' : ''}" data-act="fsProduct" data-pk="${esc(e.product_key)}">
-      <span><b>${esc(`${e.brand || ''} ${e.name}`.trim())}</b><small>${ICONS[e.category] || ''} ${esc(e.group === OTHER ? e.category : e.group)}${live.has(e.product_key) ? ' · <span class="fs-live">im Angebot</span>' : ''}</small></span>
+      <span><b>${esc(`${e.brand || ''} ${e.name}`.trim())}</b><small>${ICONS[e.category] || ''} ${esc(e.group === OTHER ? e.category : e.group)}${oc(e) ? ` · <span class="fs-live">${oc(e)} Angebot${oc(e) > 1 ? 'e' : ''}</span>` : ''}</small></span>
       <span class="fs-star">${on ? '★' : '☆'}</span></button>`;
   }).join('') + '</div>' + (prods.length > 40 ? `<p class="sub">+ ${prods.length - 40} weitere – Suche genauer eingeben oder eingrenzen.</p>` : '')
     : '<p class="empty">Kein Produkt im Katalog – der Suchbegriff lässt sich trotzdem als Favorit merken.</p>';
