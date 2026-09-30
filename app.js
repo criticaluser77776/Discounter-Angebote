@@ -66,12 +66,16 @@ const S = {
   open: new Set(), favSet: new Set(), sheetId: null, sheetOpen: false,
   status: null, poll: null, wasRunning: false,
   sort: load('sort', 'unit'),
-  f: Object.assign({ only: [], place: '', hideApp: false, hideOnline: true, onlyCurrent: false, hideNonFood: false, theme: 'auto' },
+  f: Object.assign({ only: [], place: '', noApp: [], hideCats: [], markets: {}, hideOnline: true, onlyCurrent: false, theme: 'auto' },
     load('filters', {}), { off: undefined, only: [] }),  // only = markierte Händler (leer = alle), gilt nur bis zum Neustart
   favs: load('favs', []),
   favSort: load('favSort', 'offers'),  // Favoriten: 'offers' = mit Angeboten zuerst, 'own' = eigene Reihenfolge
   seen: new Set(load('seen', [])),
 };
+
+// alte Schalter übernehmen: „App-Preise ignorieren“ -> keine App genutzt, „Non-Food ausblenden“ -> Kategorie-Filter
+if ('hideApp' in S.f) { if (S.f.hideApp) S.f.noApp = ['edeka', 'lidl', 'aldi', 'penny', 'marktkauf', 'rossmann', 'netto', 'rewe', 'combi']; delete S.f.hideApp; }
+if ('hideNonFood' in S.f) { if (S.f.hideNonFood && !S.f.hideCats.includes('Non-Food')) S.f.hideCats.push('Non-Food'); delete S.f.hideNonFood; }
 
 /* ---------- Text-Normalisierung & Suche ---------- */
 
@@ -130,16 +134,51 @@ function matchQuery(o, qt, fuzzy = false) {
 
 /* ---------- Preise & Filter ---------- */
 
-function applyEff() {
-  for (const o of S.offers) {
-    if (S.f.hideApp && o.app_price && o.regular_price) {
-      o.ep = o.regular_price;
-      o.eu = o.unit_price ? Math.round(o.unit_price * o.regular_price / o.price * 100) / 100 : null;
-      o.ea = false;
-    } else {
-      o.ep = o.price; o.eu = o.unit_price; o.ea = o.app_price;
-    }
+// App des Händlers genutzt? (Mehr → Filter → Apps)
+const useApp = v => !S.f.noApp.includes(v.retailer);
+// wirksamer Preis einer Variante; null = nur mit App erhältlich, App aber nicht genutzt
+function effOf(v) {
+  if (v.app_price && !useApp(v)) {
+    if (!v.regular_price) return null;
+    return { ep: v.regular_price, eu: v.unit_price ? Math.round(v.unit_price * v.regular_price / v.price * 100) / 100 : null, ea: false };
   }
+  return { ep: v.price, eu: v.unit_price, ea: v.app_price };
+}
+
+// Gleiche Angebote (Edeka-Märkte mit/ohne App-Preis, dazu Marktkauf) zu einem Eintrag zusammenfassen.
+// Angezeigt wird je nach Filter die günstigste passende Variante (siehe choose).
+const FAMILY = { marktkauf: 'edeka' };
+const VARIANT_FIELDS = ['id', 'retailer', 'source', 'price', 'old_price', 'regular_price', 'discount', 'unit_price', 'unit',
+  'unit_price_source', 'app_price', 'app_label', 'app_note', 'image', 'description', 'places', 'markets'];
+function aggregate(list) {
+  const by = new Map(), out = [];
+  for (const v of list) {
+    const k = [FAMILY[v.retailer] || v.retailer, v.brand_key, norm(v.title), v.valid_from, v.valid_to].join('|');
+    let lead = by.get(k);
+    if (!lead) { lead = { ...v, variants: [] }; by.set(k, lead); out.push(lead); }
+    lead.variants.push(v);
+  }
+  return out;
+}
+// günstigste Variante unter denen, die test bestehen, in das Angebot übernehmen; false = keine passt
+function choose(o, test) {
+  const ok = o.variants.filter(test);
+  let best = null, be = null;
+  for (const v of ok.length ? ok : o.variants) {
+    const e = effOf(v);
+    if (e && (!be || e.ep < be.ep - 0.001 || (Math.abs(e.ep - be.ep) < 0.001 && (v.markets?.length || 0) > (best.markets?.length || 0)))) { best = v; be = e; }
+  }
+  if (!best) { best = (ok.length ? ok : o.variants)[0]; be = { ep: best.price, eu: best.unit_price, ea: best.app_price }; }
+  if (o.vSel !== best) {
+    for (const k of VARIANT_FIELDS) o[k] = best[k];
+    o.vSel = best;
+  }
+  o.ep = be.ep; o.eu = be.eu; o.ea = be.ea;
+  o.vOk = ok;  // passende Varianten (für Hinweise „auch Marktkauf“, „1 von 12 Märkten“)
+  return ok.length > 0 && !!effOf(best);
+}
+function applyEff() {
+  for (const o of S.offers) choose(o, passOne);
 }
 
 /* ---------- Gebiet & Händler (je Gruppe vom Admin, lokal im Server-Modus) ---------- */
@@ -250,9 +289,10 @@ function areaPanel() {
     route: s.route ? { ...s.route, stops: [...s.route.stops] } : null };
   const inArea = areaPlaces(d);
   const on = k => !d.retailers.length || d.retailers.includes(k);
-  const inSel = S.offers.filter(o => on(o.retailer) && (!inArea || !o.places.length || o.places.some(p => inArea.has(p))));
+  const inD = v => on(v.retailer) && (!inArea || !v.places.length || v.places.some(p => inArea.has(p)));
+  const inSel = S.offers.filter(o => o.variants.some(inD));
   const count = inSel.length;
-  const mine = inSel.filter(o => passesPersonal(o)).length;
+  const mine = inSel.filter(o => leadOk(o) && o.variants.some(v => inD(v) && personalOne(v) && effOf(v))).length;
   const dirty = areaNorm(d) !== areaNorm(s) || (d.route?.line && d.route.line !== s.route?.line);
   const rt = d.route, stops = rt?.stops || [];
   const small = 'class="muted" style="margin:0 0 8px;font-size:.85rem"';
@@ -307,20 +347,32 @@ async function routeUpdate() {
   areaRefresh();
 }
 
-function passes(o) {
-  if (S.grpRet && !S.grpRet.includes(o.retailer)) return false;                              // Händler der Gruppe
-  if (S.area && o.places.length && !o.places.some(p => S.area.has(p))) return false;        // Umkreis der Gruppe
-  return passesPersonal(o);
+// Gebiet und Händler der Gruppe (je Variante)
+function inGroup(v) {
+  if (S.grpRet && !S.grpRet.includes(v.retailer)) return false;                              // Händler der Gruppe
+  if (S.area && v.places.length && !v.places.some(p => S.area.has(p))) return false;        // Umkreis der Gruppe
+  return true;
 }
-// persönliche Filter (Händler-Chips, Mehr → Filter)
-function passesPersonal(o) {
+// persönliche Filter je Variante (Händler-Chips, Apps, Märkte)
+function personalOne(v) {
   const f = S.f;
-  if (f.only.length && !f.only.includes(o.retailer)) return false;
-  if (f.hideApp && o.app_price && !o.regular_price) return false;
+  if (f.only.length && !f.only.includes(v.retailer)) return false;
+  if (v.app_price && !v.regular_price && !useApp(v)) return false;
+  const ms = f.markets[v.retailer];
+  if (ms?.length && v.markets?.length && !v.markets.some(m => ms.includes(m))) return false;
+  return true;
+}
+const passOne = v => inGroup(v) && personalOne(v);
+// persönliche Filter, die für alle Varianten gleich sind
+function leadOk(o) {
+  const f = S.f;
   if (f.hideOnline && o.online_only) return false;
   if (f.onlyCurrent && o.upcoming) return false;
-  if (f.hideNonFood && o.category === 'Non-Food') return false;
+  if (f.hideCats.length && f.hideCats.includes(o.category)) return false;
   return true;
+}
+function passes(o) {
+  return leadOk(o) && choose(o, passOne);
 }
 const visible = () => S.offers.filter(passes);
 
@@ -573,14 +625,21 @@ function card(o, opts = {}) {
   const r = S.retailers[o.retailer] || { name: o.retailer, color: '#888' };
   const d = disc(o);
   const tags = [];
+  // Preis gilt nur in einem Teil der Märkte (z.B. Edeka-App-Preis in 1 von 12 Märkten)
+  const allMk = new Set((o.vOk?.length ? o.vOk : o.variants).flatMap(v => v.markets || []));
+  const part = o.markets?.length && allMk.size > o.markets.length ? `${o.markets.length}/${allMk.size} Märkte` : '';
   if (opts.isNew?.(o)) tags.push('<span class="tag newt">NEU</span>');
+  if (o.ea) tags.push(`<span class="tag app">📱 ${part || esc(appName(o))}</span>`);
+  else if (part) tags.push(`<span class="tag">${part}</span>`);
   if (d && d > 0) tags.push(`<span class="tag red">−${d}%</span>`);
-  if (o.ea) tags.push(`<span class="tag app">📱 ${esc(appName(o))}</span>`);
-  else if (o.app_note && !S.f.hideApp) tags.push(`<span class="tag app" title="${esc(o.app_note)}">📱 ${esc(appNoteShort(o))}</span>`);
+  if (!o.ea && o.app_note && useApp(o)) tags.push(`<span class="tag app" title="${esc(o.app_note)}">📱 ${esc(appNoteShort(o))}</span>`);
   if (o.online_only) tags.push('<span class="tag">online</span>');
   if (o.upcoming) tags.push(`<span class="tag blue">ab ${dshort(o.valid_from)}</span>`);
   else if (o.valid_to) tags.push(`<span class="tag">bis ${dshort(o.valid_to)}</span>`);
-  if (o.markets?.length > 1) tags.push(`<span class="tag">${o.markets.length} Märkte</span>`);
+  if (!part && o.markets?.length > 1) tags.push(`<span class="tag">${o.markets.length} Märkte</span>`);
+  // gleiches Angebot auch bei anderen Händlern derselben Familie (Marktkauf zu Edeka)
+  const others = [...new Set((o.vOk || []).map(v => v.retailer).filter(k => k !== o.retailer))];
+  const also = others.length ? `<span class="also">+ ${others.map(k => esc(S.retailers[k]?.name || k)).join(', ')}</span>` : '';
   // Zettel-Status als kleiner Haken vor dem Titel (hinzufügen per Wischen)
   const onl = inList(o) ? onListMark(Li.isPrioOffer(o)) : '';
   const name = o.name || o.title;
@@ -594,7 +653,7 @@ function card(o, opts = {}) {
     <div class="thumb">${img}</div>
     <div class="info">
       <h3>${onl}${esc(title)}</h3>
-      <div class="meta"><span class="rt" style="--c:${r.color}">${esc(r.name)}</span>${o.description ? `<span class="brand">${esc(o.description)}</span>` : ''}</div>
+      <div class="meta"><span class="rt" style="--c:${r.color}">${esc(r.name)}${also}</span>${o.description ? `<span class="brand">${esc(o.description)}</span>` : ''}</div>
       ${tags.length ? `<div class="tags">${tags.join('')}</div>` : ''}
     </div>
     <div class="side">
@@ -1108,10 +1167,8 @@ const MORE_SECTIONS = [
 ];
 const FB_KINDS = [['bug', '🐞 Fehler'], ['idee', '💡 Idee'], ['sonstiges', '💬 Sonstiges']];
 const FILTER_OPTS = [
-  ['hideApp', 'App-/Kundenkartenpreise ignorieren (Normalpreis verwenden)'],
   ['hideOnline', 'Nur-online-Angebote ausblenden'],
   ['onlyCurrent', 'Nur aktuell gültige (keine Vorschau auf nächste Woche)'],
-  ['hideNonFood', 'Non-Food ausblenden'],
 ];
 const THEMES = [['auto', 'wie System'], ['light', 'hell'], ['dark', 'dunkel']];
 
@@ -1125,12 +1182,79 @@ function moreSummary(id) {
     if (s.route?.stops?.length > 1) parts.push(`Strecke${s.route.km ? ' ' + s.route.km + ' km' : ''}`);
     return `${parts.length ? parts.join(' + ') : 'ganzer Großraum'} · ${s.retailers?.length ? s.retailers.length + ' Händler' : 'alle Händler'}`;
   }
-  if (id === 'filter') { const n = FILTER_OPTS.filter(([k]) => f[k]).length; return n ? `${n} aktiv` : 'keine'; }
+  if (id === 'filter') {
+    const parts = [];
+    const na = appChips().filter(([, ks]) => !useApp({ retailer: ks[0] })).length;
+    if (na) parts.push(`${na} App${na > 1 ? 's' : ''} aus`);
+    if (f.hideCats.length) parts.push(`${f.hideCats.length} Kategorie${f.hideCats.length > 1 ? 'n' : ''} aus`);
+    const mk = Object.values(f.markets).filter(x => x.length).length;
+    if (mk) parts.push(`Märkte bei ${mk} Händler${mk > 1 ? 'n' : ''}`);
+    const n = FILTER_OPTS.filter(([k]) => f[k]).length;
+    if (n) parts.push(`${n} Schalter`);
+    return parts.join(' · ') || 'keine';
+  }
   if (id === 'darstellung') return `${(THEMES.find(x => x[0] === f.theme) || THEMES[0])[1]} · Start: ${(START_TABS.find(x => x[0] === (f.startTab || '')) || START_TABS[0])[1]}`;
   if (id === 'daten') return `${S.offers.length} Angebote · Stand ${S.generated ? new Date(S.generated).toLocaleString('de-DE', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '–'}`;
   if (id === 'feedback') return 'Fehler melden, Ideen und Wünsche';
   if (id === 'info') return `Kurzanleitung · ${window.APP_VERSION ? 'Version ' + window.APP_VERSION.number : 'Installieren'}`;
   return '';
+}
+
+// Händler mit App-/Kartenpreisen (für Mehr → Filter → Apps)
+function appRetailers() {
+  const has = new Set(S.offers.flatMap(o => o.variants).filter(v => v.app_price || v.app_note).map(v => v.retailer));
+  return Object.keys(S.retailers).filter(k => has.has(k));
+}
+function appLabelOf(k) {
+  const v = S.offers.flatMap(o => o.variants).find(x => x.retailer === k && x.app_label);
+  return v?.app_label || `${S.retailers[k]?.name || k}-App`;
+}
+// eine Auswahl je App (Edeka-App gilt für Edeka und Marktkauf)
+function appChips() {
+  const m = new Map();
+  for (const k of appRetailers()) { const l = appLabelOf(k); m.set(l, [...(m.get(l) || []), k]); }
+  return [...m];
+}
+// Märkte je Händler im Gebiet der Gruppe (nur Händler mit mehreren Märkten)
+function marketsByRetailer() {
+  const m = {};
+  for (const v of S.offers.flatMap(o => o.variants)) {
+    if (!v.markets?.length || !inGroup(v)) continue;
+    const set = m[v.retailer] ||= new Set();
+    v.markets.forEach(x => set.add(x));
+  }
+  return Object.keys(S.retailers).filter(k => m[k]?.size > 1).map(k => [k, [...m[k]].sort((a, b) => shortMarket(a).localeCompare(shortMarket(b), 'de'))]);
+}
+function filterPanel() {
+  const f = S.f, small = 'class="muted" style="margin:2px 0 8px;font-size:.85rem"';
+  const cats = Object.keys(ICONS).filter(c => S.offers.some(o => o.category === c));
+  return `<div class="panel">
+      ${FILTER_OPTS.map(([k, l]) => `<label class="line switch"><input type="checkbox" data-set="${k}" ${f[k] ? 'checked' : ''}> ${l}</label>`).join('')}
+      <p ${small}>Händler wählst du oben über die farbigen Chips: markierte werden angezeigt, ohne Markierung alle.</p></div>
+    <div class="panel"><h3>📱 Genutzte Apps & Kundenkarten</h3>
+      <p ${small}>Markiert = App-Preis zählt. Sonst gilt der Normalpreis; Angebote nur mit App werden ausgeblendet.</p>
+      <div class="chips wrap">${appChips().map(([l, ks]) => `<button class="chip ${useApp({ retailer: ks[0] }) ? 'on' : ''}" data-act="fApp" data-r="${ks.join(',')}">${esc(l)}</button>`).join('')}</div></div>
+    <div class="panel"><h3>🗂️ Kategorien</h3>
+      <p ${small}>Markiert = wird angezeigt. Antippen blendet eine Kategorie aus.</p>
+      <div class="chips wrap">${cats.map(c => `<button class="chip ${f.hideCats.includes(c) ? '' : 'on'}" data-act="fCat" data-c="${esc(c)}">${ICONS[c] || ''} ${esc(c)}</button>`).join('')}</div></div>
+    <div class="panel"><h3>🏪 Märkte</h3>
+      <p ${small}>Nur für Händler mit Preisen je Markt. Keine Auswahl = alle Märkte im Gebiet.</p>
+      ${marketsByRetailer().map(([k, ms]) => {
+        const sel = f.markets[k] || [];
+        return `<details class="mk" ${sel.length ? 'open' : ''}><summary><b>${esc(S.retailers[k]?.name || k)}</b>
+          <span class="muted">${sel.length ? `${sel.length} von ${ms.length} gewählt` : `alle ${ms.length}`}</span></summary>
+          ${ms.map(m => `<label class="line switch"><input type="checkbox" data-fmarket="${k}" value="${esc(m)}" ${sel.includes(m) ? 'checked' : ''}> ${esc(shortMarket(m))}</label>`).join('')}</details>`;
+      }).join('') || '<p class="muted">Keine Händler mit mehreren Märkten im Gebiet.</p>'}</div>`;
+}
+
+// persönliche Filter gespeichert: Preise neu wählen, Mehr-Seite neu zeichnen (Scrollposition bleibt)
+function filtersChanged() {
+  save('filters', S.f);
+  applyEff();
+  updateBadges();
+  const y = window.scrollY;
+  rerender();
+  window.scrollTo(0, y);
 }
 
 function morePanel(id) {
@@ -1142,10 +1266,7 @@ function morePanel(id) {
       <div id="groupAdmin"></div>
       <button class="btn small" data-act="logout">Gruppen-Code auf diesem Gerät entfernen</button></div>`;
   if (id === 'gebiet') return areaPanel();
-  if (id === 'filter') return `<div class="panel">
-      ${FILTER_OPTS.map(([k, l]) => `<label class="line switch"><input type="checkbox" data-set="${k}" ${f[k] ? 'checked' : ''}> ${l}</label>`).join('')}
-      <p class="muted" style="margin:6px 0 0;font-size:.85rem">Händler wählst du oben über die farbigen Chips: markierte werden angezeigt, ohne Markierung alle.</p>
-    </div>`;
+  if (id === 'filter') return filterPanel();
   if (id === 'darstellung') return `<div class="panel">
       <label class="line">Farbschema <select data-set="theme">
         ${THEMES.map(([k, l]) => `<option value="${k}" ${f.theme === k ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
@@ -1153,7 +1274,7 @@ function morePanel(id) {
         ${START_TABS.map(([k, l]) => `<option value="${k}" ${(f.startTab || '') === k ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
     </div>`;
   if (id === 'daten') {
-    const counts = countBy(S.offers, o => o.retailer);
+    const counts = countBy(S.offers.flatMap(o => o.variants), o => o.retailer);
     return `<div class="panel">
       <p style="margin:0 0 8px">${S.offers.length} Angebote · Stand ${S.generated ? new Date(S.generated).toLocaleString('de-DE') : '–'}</p>
       <p class="muted" style="margin:0 0 8px;font-size:.85rem">${Object.entries(S.retailers).map(([k, r]) => `${esc(r.name)} ${counts[k] || 0}`).join(' · ')}</p>
@@ -1318,6 +1439,21 @@ function closeSheet() {
   });
 })();
 
+// Detailansicht: alle Varianten (Händler, Preis mit/ohne App, Märkte)
+const shortMarket = m => { const p = m.split(',').map(x => x.trim()); return p.length > 2 ? `${p[0]}, ${p[p.length - 1]}` : m; };
+function variantRows(o) {
+  const vs = [...o.variants].sort((a, b) => (effOf(a)?.ep ?? 1e9) - (effOf(b)?.ep ?? 1e9));
+  return vs.map(v => {
+    const e = effOf(v), ok = passOne(v);
+    const pr = v.app_price
+      ? `📱 ${fmt(v.price)} €${v.regular_price ? ` · ohne App ${fmt(v.regular_price)} €` : ''}`
+      : `${fmt(v.price)} €`;
+    const mk = v.markets?.length ? `${v.markets.slice(0, 4).map(m => esc(shortMarket(m))).join('<br>')}${v.markets.length > 4 ? `<br>+ ${v.markets.length - 4} weitere` : ''}` : '';
+    return `<div class="${ok && e ? '' : 'v-off'}"><span>${esc(S.retailers[v.retailer]?.name || v.retailer)}</span>
+      <span><b>${pr}</b>${mk ? `<br><small>${mk}</small>` : ''}</span></div>`;
+  }).join('');
+}
+
 async function openDetail(id) {
   const o = S.byId.get(id);
   if (!o) return;
@@ -1339,7 +1475,7 @@ async function openDetail(id) {
     <div class="kv">
       <div><span>Gültig</span><span>${valid}</span></div>
       <div><span>Einordnung</span><span><a href="#/c/${enc(o.category)}/${enc(o.group)}" data-act="goto">${esc(o.category)} › ${esc(o.group)}</a></span></div>
-      ${o.markets?.length ? `<div><span>Märkte</span><span>${o.markets.slice(0, 8).map(esc).join('<br>')}${o.markets.length > 8 ? `<br>+ ${o.markets.length - 8} weitere` : ''}</span></div>` : ''}
+      ${o.variants.length > 1 ? variantRows(o) : o.markets?.length ? `<div><span>Märkte</span><span>${o.markets.slice(0, 8).map(esc).join('<br>')}${o.markets.length > 8 ? `<br>+ ${o.markets.length - 8} weitere` : ''}</span></div>` : ''}
       <div><span>Orte</span><span>${places.length >= S.places.length ? 'alle Orte der Strecke' : esc(places.join(', '))}</span></div>
       ${o.online_only ? '<div><span>Hinweis</span><span>nur online erhältlich</span></div>' : ''}
     </div>
@@ -1387,7 +1523,7 @@ function detailPrices(o, old, d) {
   // drei Preise (Angebot, App, regulär): waagerecht wischbar, der dritte schaut rechts herein
   if (o.app_price && reg != null) h = h.replace('<div class="prices2">', '<div class="prices2 prices-scroll">');
   h += `</div><p class="sub" style="margin:0">${src}${d && d > 0 ? ` · <span class="tag red">−${d}%</span>` : ''}
-    ${S.f.hideApp && o.app_price ? ' · App-Preise werden laut Einstellung nicht berücksichtigt' : ''}</p>`;
+    ${o.app_price && !useApp(o) ? ' · App-Preise werden laut Einstellung nicht berücksichtigt' : ''}</p>`;
   if (!o.app_price && o.app_note) h += `<p class="hint">📱 ${esc(appName(o))}: ${esc(o.app_note)}</p>`;
   return h;
 }
@@ -1554,7 +1690,7 @@ document.querySelector('.tabs').addEventListener('click', e => {
 
 function renderChips() {
   // nur Händler der Gruppe, die im Umkreis Angebote haben
-  const present = new Set(S.offers.filter(o => !S.area || !o.places.length || o.places.some(p => S.area.has(p))).map(o => o.retailer));
+  const present = new Set(S.offers.flatMap(o => o.variants).filter(o => !S.area || !o.places.length || o.places.some(p => S.area.has(p))).map(o => o.retailer));
   $('#retailerChips').innerHTML = Object.entries(S.retailers).filter(([k]) => present.has(k) && (!S.grpRet || S.grpRet.includes(k))).map(([k, r]) =>
     `<button class="chip ${S.f.only.includes(k) ? 'sel' : ''}" data-act="rt" data-r="${k}" style="--c:${r.color}"><span class="dot"></span>${esc(r.name)}</button>`
   ).join('');
@@ -1806,6 +1942,16 @@ const onClick = {
     S.loaded = false;
     showLogin();
   },
+  fApp: el => {
+    const ks = el.dataset.r.split(','), off = S.f.noApp.includes(ks[0]);
+    S.f.noApp = off ? S.f.noApp.filter(x => !ks.includes(x)) : [...new Set([...S.f.noApp, ...ks])];
+    filtersChanged();
+  },
+  fCat: el => {
+    const c = el.dataset.c;
+    S.f.hideCats = S.f.hideCats.includes(c) ? S.f.hideCats.filter(x => x !== c) : [...S.f.hideCats, c];
+    filtersChanged();
+  },
   fbKind: el => {
     save('fbDraft', { ...load('fbDraft', { text: '' }), kind: el.dataset.k });
     document.querySelectorAll('[data-act="fbKind"]').forEach(b => b.classList.toggle('on', b === el));
@@ -1965,6 +2111,13 @@ document.addEventListener('change', e => {
     areaRefresh();
     return;
   }
+  if (el.dataset.fmarket) {
+    const k = el.dataset.fmarket, cur = S.f.markets[k] || [];
+    S.f.markets = { ...S.f.markets, [k]: el.checked ? [...cur, el.value] : cur.filter(m => m !== el.value) };
+    if (!S.f.markets[k].length) delete S.f.markets[k];
+    filtersChanged();
+    return;
+  }
   if (el.dataset.set) {
     const k = el.dataset.set;
     S.f[k] = el.type === 'checkbox' ? el.checked : el.value;
@@ -2085,7 +2238,7 @@ document.addEventListener('keydown', e => { if (e.key === 'Escape' && S.sheetOpe
 async function loadData() {
   try {
     const j = await DATA.offers();
-    S.offers = j.offers;
+    S.offers = aggregate(j.offers);
     // feste Reihenfolge der Händler (auch für bereits hochgeladene Daten); unbekannte hinten anhängen
     const rank = k => { const i = RETAILER_ORDER.indexOf(k); return i < 0 ? 99 : i; };
     S.retailers = Object.fromEntries(Object.entries(j.retailers).sort(([a], [b]) => rank(a) - rank(b)));
@@ -2096,7 +2249,7 @@ async function loadData() {
     S.placeName = Object.fromEntries(j.places.map(p => [p.key, p.name]));
     applyArea();
     S.generated = j.generated;
-    S.byId = new Map(S.offers.map(o => [o.id, o]));
+    S.byId = new Map(S.offers.flatMap(o => o.variants.map(v => [v.id, o])));
     S.offers.forEach(prep);
     applyEff();
     S.catalog = null;

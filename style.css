@@ -613,3 +613,12 @@ html, body, #view { overflow-x: clip; }
 .onlist.prio { color: var(--red); }
 .fb-text { width: 100%; box-sizing: border-box; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px;
   background: var(--surface); color: var(--text); font: inherit; resize: vertical; }
+/* Mehr → Filter → Märkte, Varianten in der Detailansicht */
+details.mk { border-top: 1px solid var(--line); padding: 6px 0; }
+details.mk summary { cursor: pointer; display: flex; gap: 8px; align-items: baseline; list-style: none; }
+details.mk summary::before { content: '›'; transition: transform .15s; display: inline-block; }
+details.mk[open] summary::before { transform: rotate(90deg); }
+details.mk summary .muted { font-size: .85rem; margin-left: auto; }
+.kv .v-off { opacity: .45; }
+.chip:not(.on)[data-act="fCat"], .chip:not(.on)[data-act="fApp"] { text-decoration: line-through; opacity: .7; }
+.meta .also { font-weight: 400; color: var(--muted); margin-left: 4px; }
