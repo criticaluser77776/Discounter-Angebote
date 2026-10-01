@@ -786,20 +786,21 @@ function renderAll() {
   const found = S.q ? searchHits(S.q, sr) : visible();
   const nNew = S.allRef ? found.filter(isNewAll).length : 0;
   const base = S.allNew ? found.filter(isNewAll) : found;
-  // innerhalb der Kategorie (bzw. bei Top-Angeboten insgesamt) nach der gewählten Sortierung
-  let list;
-  if (S.allTop) list = sortOffers(base.filter(o => disc(o) >= 30).sort(byName));
-  else {
-    const by = new Map();
-    for (const o of base.slice().sort(byName)) { if (!by.has(o.category)) by.set(o.category, []); by.get(o.category).push(o); }
-    list = [...by.keys()].sort((a, b) => (rank.get(a) ?? 999) - (rank.get(b) ?? 999)).flatMap(c => sortOffers(by.get(c)));
-  }
+  // feste Reihenfolge wie ein Prospekt: Kategorie (Laden-Reihenfolge) -> Produktgruppe (wie die Chips, „Weitere“ zuletzt)
+  // -> höchster Rabatt -> günstigster Grundpreis (gleiche Einheit zusammen); Top-Angebote nur nach Rabatt
+  const gRank = new Map();
+  const grp = o => { const k = o.category + '\u0001' + o.group; if (!gRank.has(k)) gRank.set(k, groupsOf(o.category).indexOf(o.group)); return gRank.get(k); };
+  const unitCmp = (a, b) => (!a.eu - !b.eu) || (a.eu && b.eu ? (unitPref(a.unit) - unitPref(b.unit)) || a.eu - b.eu : 0) || a.ep - b.ep;
+  const list = S.allTop
+    ? base.filter(o => disc(o) >= 30).sort((a, b) => disc(b) - disc(a) || unitCmp(a, b) || byName(a, b))
+    : base.slice().sort((a, b) => (rank.get(a.category) ?? 999) - (rank.get(b.category) ?? 999) || grp(a) - grp(b)
+      || disc(b) - disc(a) || unitCmp(a, b) || byName(a, b));
   const sel = S.f.only.map(k => S.retailers[k]?.name || k);
   let h = `<div class="head"><h2>🏷️ ${S.allTop ? 'Top-Angebote' : 'Alle Angebote'}</h2>
       <span class="head-acts"><button class="btn small ${S.allNew ? 'on' : ''}" data-act="allNew"
         title="${S.allRef ? 'seit deinem letzten Besuch in „Alle“ dazugekommen' : 'ab deinem nächsten Besuch'}">✨ Neu <i>${nNew}</i></button>
       <button class="btn small ${S.allTop ? 'on' : ''}" data-act="allTop">🔥 Top</button></span></div>
-    <div class="sortbar"><span>${S.q ? `<b>„${esc(S.q)}“</b>: ` : ''}${list.length}${S.allNew ? ' neue' : ''} Angebote${S.allTop ? ' ab 30 % Rabatt' : ''} · ${sel.length ? esc(sel.join(', ')) : 'alle Händler'}</span>${sortSeg()}</div>`;
+    <div class="sortbar"><span>${S.q ? `<b>„${esc(S.q)}“</b>: ` : ''}${list.length}${S.allNew ? ' neue' : ''} Angebote${S.allTop ? ' ab 30 % Rabatt' : ''} · ${sel.length ? esc(sel.join(', ')) : 'alle Händler'}</span></div>`;
   // Schnellwahl: springt zur Kategorie (kein Filter)
   const cc = countBy(list, o => o.category);
   const cats = S.allTop ? [] : [...new Set(list.map(o => o.category))];
@@ -818,7 +819,7 @@ function renderAll() {
       h += `<div class="unit-head cat-head" data-cat="${esc(o.category)}">${ICONS[o.category] || '📦'} ${esc(o.category)}</div>`;
       last = o.category;
     }
-    h += card(o, { isNew: isNewAll });
+    h += card(o, { isNew: isNewAll, metric: 'unit' });
   }
   if (list.length > S.limit) h += `<button class="btn more-btn" data-act="more" data-auto>Weitere ${list.length - S.limit} werden geladen …</button>`;
   view.innerHTML = h + '</div>';
@@ -876,7 +877,7 @@ function renderSearch() {
   let list = strong.length && !S.showWeak ? strong : res.map(r => r[0]);
   const fc = countBy(list, o => o.category + '\u0001' + o.group);
   const facets = Object.entries(fc).sort((a, b) => b[1] - a[1]).slice(0, 14)
-    .sort((a, b) => a[0].split('')[1].localeCompare(b[0].split('')[1], 'de'));
+    .sort((a, b) => a[0].split('\u0001')[1].localeCompare(b[0].split('\u0001')[1], 'de'));
   if (S.qFacet && !fc[S.qFacet]) S.qFacet = null;
   if (S.qFacet) list = list.filter(o => o.category + '\u0001' + o.group === S.qFacet);
   // dritte Filterreihe: Marken der (nach Produktgruppe eingegrenzten) Treffer
@@ -2701,14 +2702,14 @@ const GUIDE = [
       ['Marken', 'erscheinen, sobald eine Produktgruppe gewählt ist: unter der Trennlinie „Marken“ antippen, um nur diese zu sehen. „Nur Markenprodukte“ blendet Handelsmarken (ja!, Gut & Günstig …) aus.'],
       ['☆ Gruppe merken', 'merkt die Produktgruppe mit den gewählten Marken als Favorit (gelb). Nochmal tippen entfernt ihn.'],
       ['＋ Zettel', 'setzt die Produktgruppe als Wunsch auf den Einkaufszettel (grün) – dort steht dann immer das günstigste passende Angebot.'],
-      ['Sortierung', 'über der Liste: Grundpreis (€/kg, €/l), Preis oder Rabatt. Beim Grundpreis stehen gleiche Einheiten zusammen, kg und l zuerst. Bei „Preis“ steht auf den Karten der Packungspreis groß, sonst der Grundpreis. (Gilt auch für die Suche und „Alle“.)'],
+      ['Sortierung', 'über der Liste: Grundpreis (€/kg, €/l), Preis oder Rabatt. Beim Grundpreis stehen gleiche Einheiten zusammen, kg und l zuerst. Bei „Preis“ steht auf den Karten der Packungspreis groß, sonst der Grundpreis. (Gilt auch für die Suche.)'],
     ] },
   { id: 'alle', ico: '🏷️', title: 'Alle & Suche',
     intro: 'Alle Angebote in einer Liste, nach Kategorien gegliedert – und die Suche. Die Suche gehört immer zum Reiter, in dem du sie startest.',
     items: [
-      ['Gliederung', 'die Angebote stehen nach Kategorien geordnet, innerhalb nach der gewählten Sortierung (Grundpreis, Preis oder Rabatt). Die Chips oben (z.B. „🧀 Käse“) springen zur jeweiligen Kategorie.'],
+      ['Gliederung', 'die Angebote stehen wie im Prospekt: nach Kategorien, darin nach Produktgruppen (alle Äpfel zusammen, dann Bananen …), innerhalb zuerst der höchste Rabatt, dann der günstigste Grundpreis. Die Chips oben (z.B. „🧀 Käse“) springen zur jeweiligen Kategorie.'],
       ['✨ Neu', 'zeigt nur Angebote, die seit deinem letzten Besuch in „Alle“ dazugekommen sind (Zahl = wie viele); sie tragen den Tag NEU. Der Stand rückt weiter, wenn du „Alle“ verlässt – beim allerersten Besuch ist noch nichts neu. Gleiche Angebote in weiteren Märkten zählen nicht als neu, ein geänderter Preis schon.'],
-      ['🔥 Top', 'zeigt nur Angebote ab 30 % Rabatt, ohne Kategorien, sortiert wie gewählt. Nochmal tippen = zurück zu allen.'],
+      ['🔥 Top', 'zeigt nur Angebote ab 30 % Rabatt, ohne Kategorien, nach Rabatt sortiert. Nochmal tippen = zurück zu allen.'],
       ['Suche je Reiter', 'in <b>Kategorien</b> findest du aktuelle Angebote mit Eingrenzung nach Produktgruppe und Marke, der Reiter bleibt Kategorien. In <b>Alle</b> filtert die Suche nur die Liste darunter (Gliederung und Top-Angebote bleiben). Von den <b>Favoriten</b> aus sucht sie im ganzen Katalog – siehe Favoriten.'],
       ['Suchbegriffe', 'z.B. „Butter“, „Jacobs Kaffee“. Gesucht wird zuerst genau: am Wortanfang oder als Wortende („Rindergulasch“). Erst wenn das nichts findet, auch mitten im Wort, danach ähnliche Schreibweisen (ab 5 Buchstaben, nur die ähnlichsten). Die Treffer lassen sich nach Produktgruppe und Marke eingrenzen und nach Grundpreis, Preis oder Rabatt sortieren; Treffer nur in der Beschreibung lassen sich zuschalten.'],
       ['Händler-Chips', 'die farbigen Chips oben: markierte Händler werden angezeigt, ohne Markierung alle.'],
