@@ -71,6 +71,9 @@ const S = {
   favs: load('favs', []),
   favSort: load('favSort', 'offers'),  // Favoriten: 'offers' = mit Angeboten zuerst, 'own' = eigene Reihenfolge
   seen: new Set(load('seen', [])),
+  // „Alle“: Angebots-IDs beim letzten Verlassen des Reiters (null = noch nie besucht) – neu ist, was dort fehlte
+  allRef: (a => a ? new Set(a) : null)(load('allSeen', null)),
+  allNew: false,
 };
 
 // alte Schalter übernehmen: „App-Preise ignorieren“ -> keine App genutzt, „Non-Food ausblenden“ -> Kategorie-Filter
@@ -762,6 +765,16 @@ function renderCategory(cat, group) {
   view.innerHTML = h;
 }
 
+// neu in „Alle“: keine Variante des Angebots war beim letzten Verlassen des Reiters schon da
+const isNewAll = o => !!S.allRef && !o.variants.some(v => S.allRef.has(v.id));
+// Merkpunkt weiterrücken (beim Verlassen von „Alle“; im Hintergrund nur speichern, die Markierungen bleiben bis zum Verlassen)
+function allCommit(mem) {
+  if (!S.loaded || !S.offers.length) return;
+  const ids = S.offers.flatMap(o => o.variants.map(v => v.id));
+  save('allSeen', ids);
+  if (mem) { S.allRef = new Set(ids); S.allNew = false; }
+}
+
 // Tab „Alle“: alle Angebote der gewählten Händler, nach Kategorie, darin nach Rabatt (höchster zuerst), sonst A–Z
 function renderAll() {
   const rank = new Map(S.categories.map((c, i) => [c, i]));
@@ -770,7 +783,9 @@ function renderAll() {
   // „Top-Angebote“: nur ab 30 % Rabatt (ohne Kategorie-Gliederung)
   // Suche im Reiter „Alle“: filtert nur die angezeigten Bereiche und Angebote
   const sr = S.q ? searchResults(S.q) : null;
-  const base = S.q ? searchHits(S.q, sr) : visible();
+  const found = S.q ? searchHits(S.q, sr) : visible();
+  const nNew = S.allRef ? found.filter(isNewAll).length : 0;
+  const base = S.allNew ? found.filter(isNewAll) : found;
   // innerhalb der Kategorie (bzw. bei Top-Angeboten insgesamt) nach der gewählten Sortierung
   let list;
   if (S.allTop) list = sortOffers(base.filter(o => disc(o) >= 30).sort(byName));
@@ -781,15 +796,17 @@ function renderAll() {
   }
   const sel = S.f.only.map(k => S.retailers[k]?.name || k);
   let h = `<div class="head"><h2>🏷️ ${S.allTop ? 'Top-Angebote' : 'Alle Angebote'}</h2>
-      <button class="btn small ${S.allTop ? 'on' : ''}" data-act="allTop">🔥 Top-Angebote</button></div>
-    <div class="sortbar"><span>${S.q ? `<b>„${esc(S.q)}“</b>: ` : ''}${list.length} Angebote${S.allTop ? ' ab 30 % Rabatt' : ''} · ${sel.length ? esc(sel.join(', ')) : 'alle Händler'}</span>${sortSeg()}</div>`;
+      <span class="head-acts"><button class="btn small ${S.allNew ? 'on' : ''}" data-act="allNew"
+        title="${S.allRef ? 'seit deinem letzten Besuch in „Alle“ dazugekommen' : 'ab deinem nächsten Besuch'}">✨ Neu <i>${nNew}</i></button>
+      <button class="btn small ${S.allTop ? 'on' : ''}" data-act="allTop">🔥 Top</button></span></div>
+    <div class="sortbar"><span>${S.q ? `<b>„${esc(S.q)}“</b>: ` : ''}${list.length}${S.allNew ? ' neue' : ''} Angebote${S.allTop ? ' ab 30 % Rabatt' : ''} · ${sel.length ? esc(sel.join(', ')) : 'alle Händler'}</span>${sortSeg()}</div>`;
   // Schnellwahl: springt zur Kategorie (kein Filter)
   const cc = countBy(list, o => o.category);
   const cats = S.allTop ? [] : [...new Set(list.map(o => o.category))];
   if (cats.length > 1) h += '<div class="chips scroll all-jump">' + cats.map(c =>
     `<button class="chip" data-act="allJump" data-c="${esc(c)}">${ICONS[c] || ''} ${esc(c)} <i>${cc[c]}</i></button>`).join('') + '</div>';
   if (sr && list.length) h += tierNote(sr.level);
-  if (!list.length) { view.innerHTML = h + `<p class="empty">Keine passenden Angebote${S.q ? ` zu „${esc(S.q)}“` : ''}.</p>`; return; }
+  if (!list.length) { view.innerHTML = h + `<p class="empty">Keine ${S.allNew ? 'neuen ' : ''}Angebote${S.q ? ` zu „${esc(S.q)}“` : ''}${S.allNew ? ' seit deinem letzten Besuch' : ''}.</p>`; return; }
   S.allOrder = cats;
   S.allStart = cats.map(c => list.findIndex(o => o.category === c));
   const from = Math.min(S.allFrom || 0, list.length - 1);
@@ -801,7 +818,7 @@ function renderAll() {
       h += `<div class="unit-head cat-head" data-cat="${esc(o.category)}">${ICONS[o.category] || '📦'} ${esc(o.category)}</div>`;
       last = o.category;
     }
-    h += card(o);
+    h += card(o, { isNew: isNewAll });
   }
   if (list.length > S.limit) h += `<button class="btn more-btn" data-act="more" data-auto>Weitere ${list.length - S.limit} werden geladen …</button>`;
   view.innerHTML = h + '</div>';
@@ -1687,8 +1704,8 @@ function renderHistory(o, rows) {
 
 /* ---------- Routing & Rendern ---------- */
 
-function route() {
-  return location.hash.replace(/^#\/?/, '').split('/').filter(Boolean).map(decodeURIComponent);
+function route(hash = location.hash) {
+  return hash.replace(/^#\/?/, '').split('/').filter(Boolean).map(decodeURIComponent);
 }
 
 function render() {
@@ -1795,8 +1812,10 @@ function onRoute() {
   if (old) tabMem[old] = { hash: lastHash, y: window.scrollY, limit: S.limit, allFrom: S.allFrom, brands: S.brands, brandOnly: S.brandOnly,
     q: S.q, qFacet: S.qFacet, qBrands: new Set(S.qBrands), showWeak: S.showWeak };
   const oldSearch = searchTab(lastHash);
+  const wasAll = route(lastHash)[0] === 'all';
   lastHash = location.hash || '#/';
   const top = route()[0];
+  if (wasAll && top !== 'all') allCommit(true);
   if (!top || ['c', 'all', 'favs', 'list'].includes(top)) save('lastTab', top === 'c' ? '' : top || '');
   const m = restoring && restoring.hash === lastHash ? restoring : null;
   restoring = null;
@@ -1857,7 +1876,7 @@ function applyTheme() {
 
 // App geht in den Hintergrund: aktuellen Stand für Push-Zählung sichern; zurück im Vordergrund: Zähler am Symbol löschen
 document.addEventListener('visibilitychange', () => {
-  if (document.hidden) pushCtxSave(); else if (S.loaded) pushClearBadge();
+  if (document.hidden) { pushCtxSave(); if (route()[0] === 'all') allCommit(false); } else if (S.loaded) pushClearBadge();
 });
 
 // Hinweisleiste; optional mit Aktion (z.B. { label: 'Rückgängig', fn }), dann länger sichtbar
@@ -1931,6 +1950,7 @@ const onClick = {
   add: el => { Li.toggleOffer(S.byId.get(el.dataset.id)); rerender(); },
   addPrio: el => { Li.toggleOffer(S.byId.get(el.dataset.id), true); rerender(); },
   more: () => { S.limit += 120; rerender(); },
+  allNew: () => { S.allNew = !S.allNew; S.allFrom = 0; S.limit = 60; render(); window.scrollTo(0, 0); },
   allTop: () => { S.allTop = !S.allTop; S.allFrom = 0; S.limit = 60; render(); window.scrollTo(0, 0); },
   allPrev: () => {
     // frühere Angebote oben einfügen, ohne dass die Ansicht springt
@@ -2687,7 +2707,8 @@ const GUIDE = [
     intro: 'Alle Angebote in einer Liste, nach Kategorien gegliedert – und die Suche. Die Suche gehört immer zum Reiter, in dem du sie startest.',
     items: [
       ['Gliederung', 'die Angebote stehen nach Kategorien geordnet, innerhalb nach der gewählten Sortierung (Grundpreis, Preis oder Rabatt). Die Chips oben (z.B. „🧀 Käse“) springen zur jeweiligen Kategorie.'],
-      ['🔥 Top-Angebote', 'zeigt nur Angebote ab 30 % Rabatt, ohne Kategorien, sortiert wie gewählt. Nochmal tippen = zurück zu allen.'],
+      ['✨ Neu', 'zeigt nur Angebote, die seit deinem letzten Besuch in „Alle“ dazugekommen sind (Zahl = wie viele); sie tragen den Tag NEU. Der Stand rückt weiter, wenn du „Alle“ verlässt – beim allerersten Besuch ist noch nichts neu. Gleiche Angebote in weiteren Märkten zählen nicht als neu, ein geänderter Preis schon.'],
+      ['🔥 Top', 'zeigt nur Angebote ab 30 % Rabatt, ohne Kategorien, sortiert wie gewählt. Nochmal tippen = zurück zu allen.'],
       ['Suche je Reiter', 'in <b>Kategorien</b> findest du aktuelle Angebote mit Eingrenzung nach Produktgruppe und Marke, der Reiter bleibt Kategorien. In <b>Alle</b> filtert die Suche nur die Liste darunter (Gliederung und Top-Angebote bleiben). Von den <b>Favoriten</b> aus sucht sie im ganzen Katalog – siehe Favoriten.'],
       ['Suchbegriffe', 'z.B. „Butter“, „Jacobs Kaffee“. Gesucht wird zuerst genau: am Wortanfang oder als Wortende („Rindergulasch“). Erst wenn das nichts findet, auch mitten im Wort, danach ähnliche Schreibweisen (ab 5 Buchstaben, nur die ähnlichsten). Die Treffer lassen sich nach Produktgruppe und Marke eingrenzen und nach Grundpreis, Preis oder Rabatt sortieren; Treffer nur in der Beschreibung lassen sich zuschalten.'],
       ['Händler-Chips', 'die farbigen Chips oben: markierte Händler werden angezeigt, ohne Markierung alle.'],
