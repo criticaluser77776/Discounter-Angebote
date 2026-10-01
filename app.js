@@ -628,7 +628,7 @@ function card(o, opts = {}) {
       ${tags.length ? `<div class="tags">${tags.join('')}</div>` : ''}
     </div>
     <div class="side">
-      ${cardPrice(o, opts.metric)}
+      ${cardPrice(o, opts.metric ?? ((opts.sort ?? S.sort) === 'price' ? 'price' : 'unit'))}
       <button class="star-s ${fav ? 'on' : ''}" data-act="star" data-id="${esc(o.id)}" aria-label="Produkt merken">${fav ? '★' : '☆'}</button>
     </div>
   </article>`;
@@ -652,10 +652,11 @@ function offerList(list, opts = {}) {
   return h + '</div>';
 }
 
+// Sortierung umschalten; bei „Preis“ steht auf den Karten der Packungspreis groß, sonst der Grundpreis
+const sortSeg = () => `<div class="seg">${[['unit', 'Grundpreis'], ['price', 'Preis'], ['discount', 'Rabatt']]
+  .map(([k, l]) => `<button class="${S.sort === k ? 'on' : ''}" data-act="sort" data-s="${k}">${l}</button>`).join('')}</div>`;
 function sortbar(n) {
-  const modes = [['unit', 'Grundpreis'], ['price', 'Preis'], ['discount', 'Rabatt']];
-  return `<div class="sortbar"><span>${n} Angebot${n === 1 ? '' : 'e'}</span><div class="seg">${modes
-    .map(([k, l]) => `<button class="${S.sort === k ? 'on' : ''}" data-act="sort" data-s="${k}">${l}</button>`).join('')}</div></div>`;
+  return `<div class="sortbar"><span>${n} Angebot${n === 1 ? '' : 'e'}</span>${sortSeg()}</div>`;
 }
 
 function brandCounts(list) {
@@ -766,17 +767,22 @@ function renderAll() {
   const rank = new Map(S.categories.map((c, i) => [c, i]));
   const disc = o => (o.discount > 0 && o.discount < 100 ? o.discount : 0);
   const byName = (a, b) => (a.name || '').localeCompare(b.name || '', 'de');
-  // „Top-Angebote“: nur ab 30 % Rabatt, nach Rabatt sortiert (ohne Kategorie-Gliederung)
+  // „Top-Angebote“: nur ab 30 % Rabatt (ohne Kategorie-Gliederung)
   // Suche im Reiter „Alle“: filtert nur die angezeigten Bereiche und Angebote
   const sr = S.q ? searchResults(S.q) : null;
   const base = S.q ? searchHits(S.q, sr) : visible();
-  const list = S.allTop
-    ? base.filter(o => disc(o) >= 30).sort((a, b) => disc(b) - disc(a) || byName(a, b))
-    : base.slice().sort((a, b) => (rank.get(a.category) ?? 999) - (rank.get(b.category) ?? 999) || disc(b) - disc(a) || byName(a, b));
+  // innerhalb der Kategorie (bzw. bei Top-Angeboten insgesamt) nach der gewählten Sortierung
+  let list;
+  if (S.allTop) list = sortOffers(base.filter(o => disc(o) >= 30).sort(byName));
+  else {
+    const by = new Map();
+    for (const o of base.slice().sort(byName)) { if (!by.has(o.category)) by.set(o.category, []); by.get(o.category).push(o); }
+    list = [...by.keys()].sort((a, b) => (rank.get(a) ?? 999) - (rank.get(b) ?? 999)).flatMap(c => sortOffers(by.get(c)));
+  }
   const sel = S.f.only.map(k => S.retailers[k]?.name || k);
   let h = `<div class="head"><h2>🏷️ ${S.allTop ? 'Top-Angebote' : 'Alle Angebote'}</h2>
       <button class="btn small ${S.allTop ? 'on' : ''}" data-act="allTop">🔥 Top-Angebote</button></div>
-    <div class="sortbar"><span>${S.q ? `<b>„${esc(S.q)}“</b>: ` : ''}${list.length} Angebote${S.allTop ? ' ab 30 % Rabatt' : ''} · ${sel.length ? esc(sel.join(', ')) : 'alle Händler'}</span></div>`;
+    <div class="sortbar"><span>${S.q ? `<b>„${esc(S.q)}“</b>: ` : ''}${list.length} Angebote${S.allTop ? ' ab 30 % Rabatt' : ''} · ${sel.length ? esc(sel.join(', ')) : 'alle Händler'}</span>${sortSeg()}</div>`;
   // Schnellwahl: springt zur Kategorie (kein Filter)
   const cc = countBy(list, o => o.category);
   const cats = S.allTop ? [] : [...new Set(list.map(o => o.category))];
@@ -2429,7 +2435,7 @@ document.addEventListener('keydown', e => { if (e.key === 'Escape' && S.sheetOpe
 async function loadData() {
   try {
     const j = await DATA.offers();
-    S.offers = aggregate(j.offers);
+    S.offers = aggregate(j.offers.filter(o => o.price > 0));  // ohne Preis (z.B. reine PAYBACK-Punkte-Aktion) nicht anzeigen
     // feste Reihenfolge der Händler (auch für bereits hochgeladene Daten); unbekannte hinten anhängen
     const rank = k => { const i = RETAILER_ORDER.indexOf(k); return i < 0 ? 99 : i; };
     S.retailers = Object.fromEntries(Object.entries(j.retailers).sort(([a], [b]) => rank(a) - rank(b)));
@@ -2675,13 +2681,13 @@ const GUIDE = [
       ['Marken', 'erscheinen, sobald eine Produktgruppe gewählt ist: unter der Trennlinie „Marken“ antippen, um nur diese zu sehen. „Nur Markenprodukte“ blendet Handelsmarken (ja!, Gut & Günstig …) aus.'],
       ['☆ Gruppe merken', 'merkt die Produktgruppe mit den gewählten Marken als Favorit (gelb). Nochmal tippen entfernt ihn.'],
       ['＋ Zettel', 'setzt die Produktgruppe als Wunsch auf den Einkaufszettel (grün) – dort steht dann immer das günstigste passende Angebot.'],
-      ['Sortierung', 'über der Liste: Grundpreis (€/kg, €/l), Preis oder Rabatt. Beim Grundpreis stehen gleiche Einheiten zusammen, kg und l zuerst. (Gilt auch für die Suche.)'],
+      ['Sortierung', 'über der Liste: Grundpreis (€/kg, €/l), Preis oder Rabatt. Beim Grundpreis stehen gleiche Einheiten zusammen, kg und l zuerst. Bei „Preis“ steht auf den Karten der Packungspreis groß, sonst der Grundpreis. (Gilt auch für die Suche und „Alle“.)'],
     ] },
   { id: 'alle', ico: '🏷️', title: 'Alle & Suche',
     intro: 'Alle Angebote in einer Liste, nach Kategorien gegliedert – und die Suche. Die Suche gehört immer zum Reiter, in dem du sie startest.',
     items: [
-      ['Gliederung', 'die Angebote stehen nach Kategorien geordnet, innerhalb nach Rabatt. Die Chips oben (z.B. „🧀 Käse“) springen zur jeweiligen Kategorie.'],
-      ['🔥 Top-Angebote', 'zeigt nur Angebote ab 30 % Rabatt, nach Rabatt sortiert. Nochmal tippen = zurück zu allen.'],
+      ['Gliederung', 'die Angebote stehen nach Kategorien geordnet, innerhalb nach der gewählten Sortierung (Grundpreis, Preis oder Rabatt). Die Chips oben (z.B. „🧀 Käse“) springen zur jeweiligen Kategorie.'],
+      ['🔥 Top-Angebote', 'zeigt nur Angebote ab 30 % Rabatt, ohne Kategorien, sortiert wie gewählt. Nochmal tippen = zurück zu allen.'],
       ['Suche je Reiter', 'in <b>Kategorien</b> findest du aktuelle Angebote mit Eingrenzung nach Produktgruppe und Marke, der Reiter bleibt Kategorien. In <b>Alle</b> filtert die Suche nur die Liste darunter (Gliederung und Top-Angebote bleiben). Von den <b>Favoriten</b> aus sucht sie im ganzen Katalog – siehe Favoriten.'],
       ['Suchbegriffe', 'z.B. „Butter“, „Jacobs Kaffee“. Gesucht wird zuerst genau: am Wortanfang oder als Wortende („Rindergulasch“). Erst wenn das nichts findet, auch mitten im Wort, danach ähnliche Schreibweisen (ab 5 Buchstaben, nur die ähnlichsten). Die Treffer lassen sich nach Produktgruppe und Marke eingrenzen und nach Grundpreis, Preis oder Rabatt sortieren; Treffer nur in der Beschreibung lassen sich zuschalten.'],
       ['Händler-Chips', 'die farbigen Chips oben: markierte Händler werden angezeigt, ohne Markierung alle.'],

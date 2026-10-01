@@ -732,7 +732,7 @@ function liBody() {
   if (open.length) {
     // eine Liste ohne Überschriften, wichtige oben; sortiert nach Kategorie (Laden-Reihenfolge), Eingabe (IDs beginnen mit der Uhrzeit)
     // oder alphabetisch
-    const byName = (a, b) => a.name.localeCompare(b.name, 'de');
+    const byName = (a, b) => (a.orig || a.name).localeCompare(b.orig || b.name, 'de');  // ersetzte Einträge nach dem ursprünglichen Namen
     let sorter = LI.sort === 'added' ? (a, b) => a.id.localeCompare(b.id)
       : LI.sort === 'alpha' ? byName : (a, b) => catRank(a) - catRank(b) || byName(a, b);
     const s0 = sorter;
