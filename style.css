@@ -557,8 +557,6 @@ body.wizard #view { padding-bottom: 24px; }
 .pbar-dot.g { border-color: var(--accent); } .pbar-dot.y { border-color: var(--star); } .pbar-dot.r { border-color: var(--red); }
 .pbar-lbl { display: grid; grid-template-columns: 1fr auto 1fr; font-size: .72rem; color: var(--muted); }
 .pbar-lbl span:last-child { text-align: right; }
-.pbar-few { padding: 0 14px 10px 50px; font-size: .75rem; color: var(--muted); }
-.hist .pbar-few { padding: 2px 0 6px; }
 .pbar { position: relative; }
 .sw-hint.del { justify-content: flex-end; padding: 0 18px 0 0; background: color-mix(in srgb, var(--red) 30%, var(--surface)); }
 .sw-hint.del.go { background: var(--red); color: #fff; }
@@ -591,7 +589,6 @@ body.wizard #view { padding-bottom: 24px; }
 .fav-more { border: 0; background: none; color: var(--muted); font-size: 20px; padding: 4px 6px; cursor: pointer; line-height: 1; }
 .fav-more.on { color: var(--accent); }
 .fav .pbar { padding: 0 14px 8px 12px; }
-.fav .pbar-few { padding: 0 14px 8px 12px; }
 /* Wischen nach rechts: zwei Ziele übereinander */
 .sw-hint.two { display: grid; grid-template-rows: 1fr 1fr; padding: 0; overflow: hidden; background: none; }
 .sw-hint.two > div { display: flex; align-items: center; padding-left: 16px; font-size: .9rem;

@@ -930,13 +930,23 @@ function renderFavs() {
   // Katalog (mit Preisspannen) für die Preis-Leisten nachladen
   prefetchCatalog();
   const rows = favRows(vis);
-  if (!own) rows.sort((a, b) => (b.m.length > 0) - (a.m.length > 0));
+  for (const r of rows) {
+    r.range = r.m.length ? favRange(r.f, r.m) : null;
+    r.listed = !!(Li.favWish(r.f) || r.m.some(inList));
+  }
+  // „Angebote zuerst“: Favoriten mit Angebot, die noch nicht auf dem Zettel stehen, nach Nähe zum Tiefstpreis
+  // (Position des besten Angebots auf der Preis-Leiste; ohne Leiste dahinter), dann solche schon auf dem Zettel, dann ohne Angebot
+  if (!own) {
+    const rank = r => !r.m.length ? 2 : r.listed ? 1 : 0;
+    const score = r => (r.range && r.range.n >= 3 && r.range.cur != null ? barPos(r.range, r.range.cur) : 101);
+    rows.sort((a, b) => rank(a) - rank(b) || score(a) - score(b));
+  }
   h += `<div class="sortbar"><span>${S.favs.length} Favorit${S.favs.length === 1 ? '' : 'en'}${own ? ' · zum Verschieben ⠿ ziehen' : ''}</span>
     <div class="seg"><button class="${own ? '' : 'on'}" data-act="favSort" data-s="offers">Angebote zuerst</button>
     <button class="${own ? 'on' : ''}" data-act="favSort" data-s="own">Eigene Reihenfolge</button></div></div>`;
   const seenNow = [];
   const isNew = o => !S.seen.has(o.key);
-  for (const { f, m } of rows) {
+  for (const { f, m, range } of rows) {
     const pack = byPack(f);
     // ältere Favoriten: Preisalarm ohne gespeicherte Einheit -> vorherrschende Einheit der Treffer übernehmen
     if (f.max && !pack && !f.maxUnit) { f.maxUnit = dominantUnit(m) || 'kg'; save('favs', S.favs); }
@@ -953,7 +963,7 @@ function renderFavs() {
         <small>${esc(L.sub)}${pack ? ' · Packungspreis' : ''}${f.max ? ` · ${esc(maxLabel(f))}` : ''} · ${m.length ? `${m.length} Angebot${m.length === 1 ? '' : 'e'}` : 'kein Angebot'}</small></div>
       <div class="fav-r">${best ? `<span class="fav-best${best.ea ? ' is-app' : ''}">ab ${best.ea ? '📱 ' : ''}${esc(pack ? `${fmt(best.ep)} €` : priceLine(best))}</span>
           <span class="fav-rt">${esc(rname(best))}</span>` : ''}</div>
-      <button class="fav-more ${settings ? 'on' : ''}" data-act="favSettings" data-fid="${f.id}" aria-label="Einstellungen">⋮</button></div>${priceBar(favRange(f, m))}`;
+      <button class="fav-more ${settings ? 'on' : ''}" data-act="favSettings" data-fid="${f.id}" aria-label="Einstellungen">⋮</button></div>${priceBar(range)}`;
     if (settings) {
       // Einstellungen nur auf Wunsch (⚙️), nicht beim Aufklappen
       const unit = f.maxUnit || dominantUnit(m) || 'kg';
@@ -1044,15 +1054,18 @@ function rowsRange(o, rows) {
     u: unit.length ? o.unit : '', cur: unit.length ? o.eu : o.ep, d0: (unit.length ? unit : recent)[0]?.valid_from || null };
 }
 
+// Position auf der Preis-Leiste in % (0 = Tiefstpreis, 100 = Höchstpreis); zweiteilige Skala: Ø immer in der Mitte,
+// links Tiefstpreis…Ø, rechts Ø…Höchstpreis
+function barPos(r, v) {
+  const p = v <= r.avg ? (r.avg > r.min ? 50 * (v - r.min) / (r.avg - r.min) : 50)
+    : (r.max > r.avg ? 50 + 50 * (v - r.avg) / (r.max - r.avg) : 50);
+  return Math.max(0, Math.min(100, p));
+}
+
 function priceBar(r) {
-  if (!r) return '';
-  if (r.n < 3) return `<div class="pbar-few">Preisvergleich: erst ${r.n} Angebot${r.n === 1 ? '' : 'e'} erfasst – die Leiste füllt sich mit jeder Woche.</div>`;
-  // zweiteilige Skala: Ø immer in der Mitte, links Tiefstpreis…Ø, rechts Ø…Höchstpreis
-  const pos = v => {
-    const p = v <= r.avg ? (r.avg > r.min ? 50 * (v - r.min) / (r.avg - r.min) : 50)
-      : (r.max > r.avg ? 50 + 50 * (v - r.avg) / (r.max - r.avg) : 50);
-    return Math.max(0, Math.min(100, p));
-  };
+  // unter 3 erfassten Angeboten keine Leiste (noch kein aussagekräftiger Vergleich)
+  if (!r || r.n < 3) return '';
+  const pos = v => barPos(r, v);
   const cls = r.cur == null ? '' : pos(r.cur) < 40 ? 'g' : pos(r.cur) <= 60 ? 'y' : 'r';
   const unit = r.u ? `€/${esc(r.u)}` : '€';
   return `<div class="pbar" title="Strich = Durchschnitt (Ø) der erfassten Angebotspreise, Punkt = bestes aktuelles Angebot">
@@ -2724,10 +2737,10 @@ const GUIDE = [
       ['＋ Hinzufügen', 'Kategorie und Produktgruppe wählen, Marken markieren. Hier gibt es auch Marken, die gerade nicht im Angebot sind (z.B. für später).'],
       ['🔍 Suche', 'oben im Reiter Favoriten sucht im ganzen Produktkatalog, auch nach Produkten ohne aktuelles Angebot. Eingrenzen nach Produktgruppe und Marke ist freiwillig. „☆ Als Favorit merken“ speichert Suchbegriff mit Auswahl; einzelne Produkte merkst du mit ☆.'],
       ['Favorit antippen', 'klappt die passenden Angebote auf, das günstigste steht oben. „neu“ = noch nicht gesehene Angebote.'],
-      ['Preis-Leiste', 'grün = günstig, rot = teuer im Vergleich der letzten 12 Monate. Der Strich in der Mitte ist der Durchschnitt, der Punkt das beste aktuelle Angebot.'],
+      ['Preis-Leiste', 'nur bei Favoriten mit aktuellem Angebot und ab 3 erfassten Angeboten: grün = günstig, rot = teuer im Vergleich der letzten 12 Monate. Der Strich in der Mitte ist der Durchschnitt, der Punkt das beste aktuelle Angebot.'],
       ['⋮ Einstellungen', 'Name, Vergleich nach Grundpreis oder Packungspreis (z.B. Kaffeekapseln), Preisalarm „max. … €“.'],
       ['Wischen', 'nach rechts = auf den Zettel (oben) bzw. wichtig (unten), nach links = Favorit entfernen (mit Rückfrage).'],
-      ['Reihenfolge', '„Angebote zuerst“ oder „Eigene Reihenfolge“ – dann am Griff ⠿ verschieben.'],
+      ['Reihenfolge', '„Angebote zuerst“: oben Favoriten, deren bestes Angebot am nächsten am Tiefstpreis liegt (Preis-Leiste), danach solche, die schon auf dem Zettel stehen, zuletzt die ohne Angebot. „Eigene Reihenfolge“: am Griff ⠿ verschieben.'],
       ['Zahl am Stern', 'unten in der Leiste: wie viele Favoriten gerade im Angebot sind.'],
     ] },
   { id: 'zettel', ico: '📝', title: 'Einkaufszettel',
