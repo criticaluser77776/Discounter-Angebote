@@ -814,3 +814,11 @@ details.mk summary .muted { font-size: .85rem; margin-left: auto; }
 .fs-prod .fs-star { font-size: 1.2rem; color: var(--muted); }
 .fs-prod.on { border-color: var(--star); }
 .fs-prod.on .fs-star { color: var(--star); }
+
+/* noch nicht gültige Angebote: Hinweis im Favoriten-Kopf, Abschnitte in Angebotslisten, hohler Punkt in der Preis-Leiste */
+.fav-fut { padding: 0 14px 4px 12px; font-size: .78rem; color: var(--blue); font-weight: 600; overflow-wrap: anywhere; }
+.sec-head { font-size: .75rem; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; padding: 10px 4px 4px; }
+.sec-head.fut { color: var(--blue); }
+.fav .sec-head { background: var(--surface-2); padding: 10px 16px 0; margin-bottom: -6px; }
+.pbar-dot.fut { width: 12px; height: 12px; margin: -6px 0 0 -6px; background: var(--blue-soft); border: 2px solid var(--blue); box-shadow: none; }
+.li-fut { font-weight: 700; }

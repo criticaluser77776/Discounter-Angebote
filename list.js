@@ -622,6 +622,12 @@ function qtyLabel(it) {
 const liSimple = () => LI.view === 'simple';
 const liShowPrices = () => LI.prices && !liSimple();
 
+// Zusatz zum 💡-Hinweis: künftig günstigeres Angebot („· Mo 12.10.: 2,99 €/kg · Lidl“)
+function liFut(list, pack) {
+  const f = futBetter(list, pack);
+  return f ? ` · <b class="li-fut">${esc(futText(f, pack))}</b>` : '';
+}
+
 function liRow(it, best) {
   const c = catInfo(it.cat);
   // Favoriten-Wünsche: kein Preis rechts (Hinweis „💡 im Angebot“ reicht), außer von Hand eingetragen – wie freie Einträge
@@ -638,12 +644,12 @@ function liRow(it, best) {
   } else if (it.kind === 'wish') {
     // wie bei getippten Einträgen: allgemeiner Hinweis mit günstigstem Preis und Anzahl (Details per langem Drücken)
     const n = best ? liOffersOf(it).length : 0;
-    sub.push(best ? `<span class="li-hint">💡 im Angebot: ${esc(rname(best))} ${best.ea ? '📱 ' : ''}${esc(metricLine(best, it.fav))}${n > 1 ? ` · ${n} Angebote` : ''}</span> ${fromTag(best)}`
+    sub.push(best ? `<span class="li-hint">💡 im Angebot: ${esc(rname(best))} ${best.ea ? '📱 ' : ''}${esc(metricLine(best, it.fav))}${n > 1 ? ` · ${n} Angebote` : ''}${liFut(liOffersOf(it), byPack(it.fav))}</span> ${fromTag(best)}`
       : 'Wunsch · derzeit kein Angebot');
   } else if (!it.done && it.price == null) {
     const m = liMatches(it.name, catInfo(it.cat).id);
     const n = m.length ? liSearchOffers(it).length : 0;  // Anzahl wie Suche / langes Drücken
-    if (m.length) sub.push(`<span class="li-hint">💡 im Angebot: ${esc(rname(m[0]))} ${esc(priceLine(m[0]))}${n > 1 ? ` · ${n} Angebote` : ''}</span> ${fromTag(m[0])}`);
+    if (m.length) sub.push(`<span class="li-hint">💡 im Angebot: ${esc(rname(m[0]))} ${esc(priceLine(m[0]))}${n > 1 ? ` · ${n} Angebote` : ''}${liFut(m, false)}</span> ${fromTag(m[0])}`);
   }
   if (!liSimple() && Cloud.enabled && it.by && it.by !== Cloud.name()) sub.push(`von ${esc(it.by)}`);
   const q = qtyLabel(it);
@@ -1422,7 +1428,7 @@ function liShowOffers(it) {
   if (!m.length) { toast(`Zu „${it.name}“ gerade kein Angebot`); return; }
   openSheet(`<div class="grab"></div><h2 class="li-sheet-h">Angebote zu „${esc(it.name)}“</h2>
     <p class="sub" style="margin:0 0 6px">${m.length} Angebot${m.length === 1 ? '' : 'e'} · nach rechts wischen: Eintrag durch das Angebot ersetzen</p>
-    ${offerList(m, { limit: 40, heads: false, sort: it.kind === 'wish' ? metricSort(it.fav) : S.sort })}`);
+    ${offerSections(m, { limit: 40, heads: false, sort: it.kind === 'wish' ? metricSort(it.fav) : S.sort })}`);
   S.replaceFor = it.id;  // nach openSheet setzen (openSheet/hideSheet setzen es zurück)
 }
 

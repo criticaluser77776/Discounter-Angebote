@@ -360,6 +360,29 @@ function curFirst(list) {
   return now.length === list.length ? list : now.concat(list.filter(upcoming));
 }
 const fromTag = o => upcoming(o) ? `<span class="tag blue">ab ${dshort(o.valid_from)}</span>` : '';
+// künftiges Angebot, das günstiger ist als das beste aktuelle (gleiches Vergleichsmaß); list sortiert, gültige zuerst
+function futBetter(list, pack) {
+  const cur = list.find(o => !upcoming(o));
+  if (!cur) return null;
+  const val = o => pack || !cur.eu ? o.ep : (o.eu && o.unit === cur.unit ? o.eu : null);
+  let best = null;
+  for (const o of list) {
+    const v = upcoming(o) ? val(o) : null;
+    if (v != null && v < val(cur) - 0.001 && (!best || v < val(best))) best = o;
+  }
+  return best;
+}
+const futText = (o, pack) => `${dshort(o.valid_from)}: ${o.ea ? '📱 ' : ''}${pack || !o.eu ? `${fmt(o.ep)} €` : priceLine(o)} · ${rname(o)}`;
+// Angebotsliste in Abschnitten: „Jetzt gültig“, dann je Starttag „Ab Mo 12.10.“ (nur wenn es künftige gibt)
+function offerSections(list, opts) {
+  const now = list.filter(o => !upcoming(o));
+  if (now.length === list.length) return offerList(list, opts);
+  const days = new Map();
+  for (const o of list) if (upcoming(o)) { if (!days.has(o.valid_from)) days.set(o.valid_from, []); days.get(o.valid_from).push(o); }
+  let h = now.length ? `<div class="sec-head">Jetzt gültig</div>${offerList(now, opts)}` : '';
+  for (const d of [...days.keys()].sort()) h += `<div class="sec-head fut">Ab ${dshort(d)}</div>${offerList(days.get(d), opts)}`;
+  return h;
+}
 
 function dshort(iso) {
   const d = new Date(iso + 'T00:00');
@@ -612,13 +635,14 @@ function card(o, opts = {}) {
   const allMk = new Set((o.vOk?.length ? o.vOk : o.variants).flatMap(v => v.markets || []));
   const part = o.markets?.length && allMk.size > o.markets.length ? `${o.markets.length}/${allMk.size} Märkte` : '';
   if (opts.isNew?.(o)) tags.push('<span class="tag newt">NEU</span>');
+  // noch nicht gültig: Datum gleich vorn, damit es in der einzeiligen Hinweiszeile nicht abgeschnitten wird
+  if (upcoming(o)) tags.push(fromTag(o));
   if (o.ea) tags.push(`<span class="tag app">📱 ${part || esc(appName(o))}</span>`);
   else if (part) tags.push(`<span class="tag">${part}</span>`);
   if (d && d > 0) tags.push(`<span class="tag red">−${d}%</span>`);
   if (!o.ea && o.app_note && useApp(o)) tags.push(`<span class="tag app" title="${esc(o.app_note)}">📱 ${esc(appNoteShort(o))}</span>`);
   if (o.online_only) tags.push('<span class="tag">online</span>');
-  if (upcoming(o)) tags.push(fromTag(o));
-  else if (o.valid_to) tags.push(`<span class="tag">bis ${dshort(o.valid_to)}</span>`);
+  if (!upcoming(o) && o.valid_to) tags.push(`<span class="tag">bis ${dshort(o.valid_to)}</span>`);
   if (!part && o.markets?.length > 1) tags.push(`<span class="tag">${o.markets.length} Märkte</span>`);
   // gleiches Angebot auch bei anderen Händlern derselben Familie (Marktkauf zu Edeka)
   const others = [...new Set((o.vOk || []).map(v => v.retailer).filter(k => k !== o.retailer))];
@@ -941,8 +965,7 @@ function renderFavs() {
   const rows = favRows(vis);
   for (const r of rows) {
     r.m = curFirst(sortOffers(r.m, metricSort(r.f)));
-    const now = r.m.filter(o => !upcoming(o));
-    r.range = r.m.length ? favRange(r.f, now.length ? now : r.m) : null;
+    r.range = r.m.length ? favRange(r.f, r.m) : null;
     r.listed = !!(Li.favWish(r.f) || r.m.some(inList));
   }
   // „Angebote zuerst“: Favoriten mit Angebot, die noch nicht auf dem Zettel stehen, nach Nähe zum Tiefstpreis
@@ -962,6 +985,7 @@ function renderFavs() {
     // ältere Favoriten: Preisalarm ohne gespeicherte Einheit -> vorherrschende Einheit der Treffer übernehmen
     if (f.max && !pack && !f.maxUnit) { f.maxUnit = dominantUnit(m) || 'kg'; save('favs', S.favs); }
     const best = m[0];  // bestes schon gültiges Angebot (sonst das beste künftige)
+    const fut = best ? futBetter(m, pack) : null;  // künftig günstiger als jetzt?
     const fresh = m.filter(isNew).length;
     const L = favLabel(f);
     const open = S.open.has(f.id), settings = S.favSet.has(f.id);
@@ -973,7 +997,8 @@ function renderFavs() {
         <small>${esc(L.sub)}${pack ? ' · Packungspreis' : ''}${f.max ? ` · ${esc(maxLabel(f))}` : ''} · ${m.length ? `${m.length} Angebot${m.length === 1 ? '' : 'e'}` : 'kein Angebot'}</small></div>
       <div class="fav-r">${best ? `<span class="fav-best${best.ea ? ' is-app' : ''}">ab ${best.ea ? '📱 ' : ''}${esc(pack ? `${fmt(best.ep)} €` : priceLine(best))}</span>
           <span class="fav-rt">${esc(rname(best))} ${fromTag(best)}</span>` : ''}</div>
-      <button class="fav-more ${settings ? 'on' : ''}" data-act="favSettings" data-fid="${f.id}" aria-label="Einstellungen">⋮</button></div>${priceBar(range)}`;
+      <button class="fav-more ${settings ? 'on' : ''}" data-act="favSettings" data-fid="${f.id}" aria-label="Einstellungen">⋮</button></div>
+      ${fut ? `<div class="fav-fut">günstiger ab ${esc(futText(fut, pack))}</div>` : ''}${priceBar(range)}`;
     if (settings) {
       // Einstellungen nur auf Wunsch (⚙️), nicht beim Aufklappen
       const unit = f.maxUnit || dominantUnit(m) || 'kg';
@@ -994,7 +1019,7 @@ function renderFavs() {
         <button class="btn small danger" data-act="favDel" data-fid="${f.id}">Löschen</button></div></div>`;
     }
     if (open) {
-      h += offerList(m, { limit: 200, sort: metricSort(f), metric: metricSort(f), isNew, short: true });
+      h += offerSections(m, { limit: 200, sort: metricSort(f), metric: metricSort(f), isNew, short: true });
       m.forEach(o => seenNow.push(o.key));
     }
     h += '</section>';
@@ -1049,8 +1074,11 @@ function favRange(f, m) {
   let n = 0, sum = 0, min = Infinity, max = -Infinity, d0 = '9999';
   for (const [c, a, lo, hi, d] of ps) { n += c; sum += a * c; min = Math.min(min, lo); max = Math.max(max, hi); if (d && d < d0) d0 = d; }
   if (!n) return null;
-  const now = m.map(o => pack ? o.ep : (o.unit === u ? o.eu : null)).filter(v => v != null);
-  return { n, min, max, avg: sum / n, u, d0: d0 === '9999' ? null : d0, cur: now.length ? Math.min(...now) : null };
+  const vals = l => l.map(o => pack ? o.ep : (o.unit === u ? o.eu : null)).filter(v => v != null);
+  const nowV = vals(m.filter(o => !upcoming(o))), futV = vals(m.filter(upcoming));
+  const cur = nowV.length ? Math.min(...nowV) : futV.length ? Math.min(...futV) : null;
+  const fut = nowV.length && futV.length && Math.min(...futV) < cur ? Math.min(...futV) : null;
+  return { n, min, max, avg: sum / n, u, d0: d0 === '9999' ? null : d0, cur, fut };
 }
 
 // Spanne eines einzelnen Produkts aus seinem Preisverlauf (Detailansicht)
@@ -1078,8 +1106,9 @@ function priceBar(r) {
   const pos = v => barPos(r, v);
   const cls = r.cur == null ? '' : pos(r.cur) < 40 ? 'g' : pos(r.cur) <= 60 ? 'y' : 'r';
   const unit = r.u ? `€/${esc(r.u)}` : '€';
-  return `<div class="pbar" title="Strich = Durchschnitt (Ø) der erfassten Angebotspreise, Punkt = bestes aktuelles Angebot">
+  return `<div class="pbar" title="Strich = Durchschnitt (Ø) der erfassten Angebotspreise, Punkt = bestes aktuelles Angebot, hohler Punkt = günstigeres Angebot ab nächster Woche">
     <div class="pbar-track"><span class="pbar-avg" style="left:50%"></span>
+      ${r.fut != null ? `<span class="pbar-dot fut" style="left:${pos(r.fut)}%"></span>` : ''}
       ${r.cur != null ? `<span class="pbar-dot ${cls}" style="left:${pos(r.cur)}%"></span>` : ''}</div>
     <div class="pbar-lbl"><span>${fmt(r.min)}</span><span>Ø ${fmt(r.avg)} ${unit}</span><span>${fmt(r.max)}</span></div></div>`;
 }
@@ -2753,8 +2782,8 @@ const GUIDE = [
     items: [
       ['＋ Hinzufügen', 'Kategorie und Produktgruppe wählen, Marken markieren. Hier gibt es auch Marken, die gerade nicht im Angebot sind (z.B. für später).'],
       ['🔍 Suche', 'oben im Reiter Favoriten sucht im ganzen Produktkatalog, auch nach Produkten ohne aktuelles Angebot. Eingrenzen nach Produktgruppe und Marke ist freiwillig. „☆ Als Favorit merken“ speichert Suchbegriff mit Auswahl; einzelne Produkte merkst du mit ☆.'],
-      ['Favorit antippen', 'klappt die passenden Angebote auf: oben die schon gültigen, das günstigste zuerst, danach die erst ab nächster Woche gültigen (blau „ab Mo …“). „neu“ = noch nicht gesehene Angebote; geöffnete Angebote gelten als gesehen.'],
-      ['Preis-Leiste', 'nur bei Favoriten mit aktuellem Angebot und ab 3 erfassten Angeboten: grün = günstig, rot = teuer im Vergleich der letzten 12 Monate. Der Strich in der Mitte ist der Durchschnitt, der Punkt das beste aktuelle Angebot.'],
+      ['Favorit antippen', 'klappt die passenden Angebote auf: zuerst „Jetzt gültig“, das günstigste oben, darunter je Starttag „Ab Mo …“. Wird es nächste Woche günstiger, steht unter dem Favoriten blau „günstiger ab Mo …“ – auch im 💡-Hinweis auf dem Zettel. „neu“ = noch nicht gesehene Angebote; geöffnete Angebote gelten als gesehen.'],
+      ['Preis-Leiste', 'nur bei Favoriten mit aktuellem Angebot und ab 3 erfassten Angeboten: grün = günstig, rot = teuer im Vergleich der letzten 12 Monate. Der Strich in der Mitte ist der Durchschnitt, der Punkt das beste aktuelle Angebot, der blaue Kreis ein günstigeres Angebot, das erst ab nächster Woche gilt.'],
       ['⋮ Einstellungen', 'Name, Vergleich nach Grundpreis oder Packungspreis (z.B. Kaffeekapseln), Preisalarm „max. … €“.'],
       ['Wischen', 'nach rechts = auf den Zettel (oben) bzw. wichtig (unten), nach links = Favorit entfernen (mit Rückfrage).'],
       ['Reihenfolge', '„Angebote zuerst“: oben Favoriten, deren bestes Angebot am nächsten am Tiefstpreis liegt (Preis-Leiste), danach solche, die schon auf dem Zettel stehen, zuletzt die ohne Angebot. „Eigene Reihenfolge“: am Griff ⠿ verschieben.'],
