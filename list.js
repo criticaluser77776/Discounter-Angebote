@@ -335,7 +335,7 @@ function liMatches(name, cat) {
       const score = o => rule.soft.filter(t => liHitAny(o, t)).length;
       m = m.map((o, i) => [o, score(o), i]).sort((a, b) => b[1] - a[1] || a[2] - b[2]).map(x => x[0]);
     }
-    LI.hints.set(k, m);
+    LI.hints.set(k, curFirst(m));
   }
   return LI.hints.get(k);
 }
@@ -481,7 +481,7 @@ function liTakePrio() {
 
 const offerSnap = o => ({
   id: o.id, retailer: o.retailer, brand: o.brand, title: o.name || o.title, price: o.ep, unit_price: o.eu,
-  unit: o.unit, valid_to: o.valid_to, app: o.ea ? appName(o) : '', category: o.category, image: o.image || '',
+  unit: o.unit, valid_from: o.valid_from, valid_to: o.valid_to, app: o.ea ? appName(o) : '', category: o.category, image: o.image || '',
 });
 const liOfferItem = o => liOpen().find(i => i.kind === 'offer' && i.offer?.id === o.id);
 
@@ -588,7 +588,7 @@ function liFavsPull() {
 
 function liBest(it) {
   if (it.kind !== 'wish' || !S.loaded) return null;
-  return sortOffers(visible().filter(o => favMatch(it.fav, o)), metricSort(it.fav))[0] || null;
+  return curFirst(sortOffers(visible().filter(o => favMatch(it.fav, o)), metricSort(it.fav)))[0] || null;
 }
 
 // Preis des Eintrags: manuell > Angebot > günstigstes Angebot zum Wunsch; × Menge außer bei Gewicht/Volumen
@@ -630,18 +630,20 @@ function liRow(it, best) {
   if (liSimple()) { /* nur der Name */ } else if (it.kind === 'offer') {
     const o = it.offer;
     const expired = o.valid_to && o.valid_to < today();
+    const from = o.valid_from || S.byId.get(o.id)?.valid_from;  // ältere Einträge ohne valid_from: aus dem Angebot
     sub.push(`<span class="rt" style="--c:${S.retailers[o.retailer]?.color || '#888'}">${esc(S.retailers[o.retailer]?.name || o.retailer)}</span>` +
       `${o.app ? ` 📱 ${esc(o.app)}` : ''}${o.unit_price ? ` · ${fmt(o.unit_price)} €/${esc(o.unit)}` : ''}` +
-      (o.valid_to ? (expired ? ' · <span class="err">abgelaufen</span>' : ` · bis ${dshort(o.valid_to)}`) : ''));
+      (o.valid_to ? (expired ? ' · <span class="err">abgelaufen</span>' : ` · bis ${dshort(o.valid_to)}`) : '') +
+      (from ? ` ${fromTag({ valid_from: from })}` : ''));
   } else if (it.kind === 'wish') {
     // wie bei getippten Einträgen: allgemeiner Hinweis mit günstigstem Preis und Anzahl (Details per langem Drücken)
     const n = best ? liOffersOf(it).length : 0;
-    sub.push(best ? `<span class="li-hint">💡 im Angebot: ${esc(rname(best))} ${best.ea ? '📱 ' : ''}${esc(metricLine(best, it.fav))}${n > 1 ? ` · ${n} Angebote` : ''}</span>`
+    sub.push(best ? `<span class="li-hint">💡 im Angebot: ${esc(rname(best))} ${best.ea ? '📱 ' : ''}${esc(metricLine(best, it.fav))}${n > 1 ? ` · ${n} Angebote` : ''}</span> ${fromTag(best)}`
       : 'Wunsch · derzeit kein Angebot');
   } else if (!it.done && it.price == null) {
     const m = liMatches(it.name, catInfo(it.cat).id);
     const n = m.length ? liSearchOffers(it).length : 0;  // Anzahl wie Suche / langes Drücken
-    if (m.length) sub.push(`<span class="li-hint">💡 im Angebot: ${esc(rname(m[0]))} ${esc(priceLine(m[0]))}${n > 1 ? ` · ${n} Angebote` : ''}</span>`);
+    if (m.length) sub.push(`<span class="li-hint">💡 im Angebot: ${esc(rname(m[0]))} ${esc(priceLine(m[0]))}${n > 1 ? ` · ${n} Angebote` : ''}</span> ${fromTag(m[0])}`);
   }
   if (!liSimple() && Cloud.enabled && it.by && it.by !== Cloud.name()) sub.push(`von ${esc(it.by)}`);
   const q = qtyLabel(it);
@@ -905,7 +907,7 @@ function liEditSheet(it) {
       · ${fmt(o.price)} €${o.unit_price ? ` (${fmt(o.unit_price)} €/${esc(o.unit)})` : ''}${o.app ? ` · 📱 ${esc(o.app)}` : ''}
       ${live ? `<br><button class="btn small" data-act="open" data-id="${esc(o.id)}">Angebot ansehen</button>` : '<br><small class="muted">nicht mehr in den aktuellen Angeboten</small>'}</div>`;
   } else {
-    const m = it.kind === 'wish' ? sortOffers(visible().filter(o => favMatch(it.fav, o)), metricSort(it.fav)) : liMatches(it.name, catInfo(it.cat).id);
+    const m = it.kind === 'wish' ? curFirst(sortOffers(visible().filter(o => favMatch(it.fav, o)), metricSort(it.fav))) : liMatches(it.name, catInfo(it.cat).id);
     if (it.kind === 'free') {
       const favs = liFavsFor(it.name).slice(0, 4);
       if (favs.length) {
@@ -1400,7 +1402,7 @@ document.addEventListener('change', e => {
 function liOffersOf(it) {
   if (!S.loaded || it.done) return [];
   if (it.kind === 'offer') { const o = S.byId.get(it.offer.id); return o ? [o] : []; }
-  if (it.kind === 'wish') return sortOffers(visible().filter(o => favMatch(it.fav, o)), metricSort(it.fav));
+  if (it.kind === 'wish') return curFirst(sortOffers(visible().filter(o => favMatch(it.fav, o)), metricSort(it.fav)));
   return liSearchOffers(it);
 }
 // freier Eintrag: dieselben Treffer wie die Suche oben (eigene Zuordnung per Chips im Bearbeiten-Dialog hat Vorrang)
@@ -1410,7 +1412,7 @@ function liSearchOffers(it) {
   // kurz zwischenspeichern: die Zeilen des Zettels fragen beim Zeichnen jeweils einzeln
   const k = nkey(it.name), c = LI.searchCache ||= new Map(), hit = c.get(k);
   if (hit && Date.now() - hit.t < 3000) return hit.m;
-  const m = sortOffers([...searchHits(it.name)]);
+  const m = curFirst(sortOffers([...searchHits(it.name)]));
   c.set(k, { m, t: Date.now() });
   return m;
 }

@@ -11,7 +11,7 @@ const view = $('#view');
 const enc = encodeURIComponent;
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const fmt = n => n == null ? '' : n.toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-const today = () => new Date().toISOString().slice(0, 10);
+const today = () => { const d = new Date(); return new Date(d - d.getTimezoneOffset() * 6e4).toISOString().slice(0, 10); };
 
 function load(key, fallback) {
   try { const v = localStorage.getItem('ap.' + key); return v == null ? fallback : JSON.parse(v); } catch { return fallback; }
@@ -320,7 +320,7 @@ const passOne = v => inGroup(v) && personalOne(v);
 function leadOk(o) {
   const f = S.f;
   if (f.hideOnline && o.online_only) return false;
-  if (f.onlyCurrent && o.upcoming) return false;
+  if (f.onlyCurrent && upcoming(o)) return false;
   if (f.hideCats.length && f.hideCats.includes(o.category)) return false;
   return true;
 }
@@ -351,6 +351,15 @@ function disc(o) {
 const priceLine = o => o.eu ? `${fmt(o.eu)} €/${o.unit}` : `${fmt(o.ep)} €`;
 const RETAILER_ORDER = ['edeka', 'lidl', 'aldi', 'penny', 'marktkauf', 'rossmann', 'netto', 'rewe', 'combi'];
 const rname = o => S.retailers[o.retailer]?.name || o.retailer;
+
+// gilt noch nicht (Vorschau auf nächste Woche); aus dem Datum statt aus dem beim Upload gesetzten Feld „upcoming“
+const upcoming = o => !!o.valid_from && o.valid_from > today();
+// schon gültige Angebote zuerst, noch nicht gültige dahinter (Reihenfolge sonst unverändert)
+function curFirst(list) {
+  const now = list.filter(o => !upcoming(o));
+  return now.length === list.length ? list : now.concat(list.filter(upcoming));
+}
+const fromTag = o => upcoming(o) ? `<span class="tag blue">ab ${dshort(o.valid_from)}</span>` : '';
 
 function dshort(iso) {
   const d = new Date(iso + 'T00:00');
@@ -608,7 +617,7 @@ function card(o, opts = {}) {
   if (d && d > 0) tags.push(`<span class="tag red">−${d}%</span>`);
   if (!o.ea && o.app_note && useApp(o)) tags.push(`<span class="tag app" title="${esc(o.app_note)}">📱 ${esc(appNoteShort(o))}</span>`);
   if (o.online_only) tags.push('<span class="tag">online</span>');
-  if (o.upcoming) tags.push(`<span class="tag blue">ab ${dshort(o.valid_from)}</span>`);
+  if (upcoming(o)) tags.push(fromTag(o));
   else if (o.valid_to) tags.push(`<span class="tag">bis ${dshort(o.valid_to)}</span>`);
   if (!part && o.markets?.length > 1) tags.push(`<span class="tag">${o.markets.length} Märkte</span>`);
   // gleiches Angebot auch bei anderen Händlern derselben Familie (Marktkauf zu Edeka)
@@ -931,7 +940,9 @@ function renderFavs() {
   prefetchCatalog();
   const rows = favRows(vis);
   for (const r of rows) {
-    r.range = r.m.length ? favRange(r.f, r.m) : null;
+    r.m = curFirst(sortOffers(r.m, metricSort(r.f)));
+    const now = r.m.filter(o => !upcoming(o));
+    r.range = r.m.length ? favRange(r.f, now.length ? now : r.m) : null;
     r.listed = !!(Li.favWish(r.f) || r.m.some(inList));
   }
   // „Angebote zuerst“: Favoriten mit Angebot, die noch nicht auf dem Zettel stehen, nach Nähe zum Tiefstpreis
@@ -950,8 +961,7 @@ function renderFavs() {
     const pack = byPack(f);
     // ältere Favoriten: Preisalarm ohne gespeicherte Einheit -> vorherrschende Einheit der Treffer übernehmen
     if (f.max && !pack && !f.maxUnit) { f.maxUnit = dominantUnit(m) || 'kg'; save('favs', S.favs); }
-    sortOffers(m, metricSort(f));
-    const best = m[0];
+    const best = m[0];  // bestes schon gültiges Angebot (sonst das beste künftige)
     const fresh = m.filter(isNew).length;
     const L = favLabel(f);
     const open = S.open.has(f.id), settings = S.favSet.has(f.id);
@@ -962,7 +972,7 @@ function renderFavs() {
       <div class="t"><b>${wish ? onListMark(wish.prio) : ''}${esc(L.title)}${fresh ? ` <span class="new">${fresh} neu</span>` : ''}</b>
         <small>${esc(L.sub)}${pack ? ' · Packungspreis' : ''}${f.max ? ` · ${esc(maxLabel(f))}` : ''} · ${m.length ? `${m.length} Angebot${m.length === 1 ? '' : 'e'}` : 'kein Angebot'}</small></div>
       <div class="fav-r">${best ? `<span class="fav-best${best.ea ? ' is-app' : ''}">ab ${best.ea ? '📱 ' : ''}${esc(pack ? `${fmt(best.ep)} €` : priceLine(best))}</span>
-          <span class="fav-rt">${esc(rname(best))}</span>` : ''}</div>
+          <span class="fav-rt">${esc(rname(best))} ${fromTag(best)}</span>` : ''}</div>
       <button class="fav-more ${settings ? 'on' : ''}" data-act="favSettings" data-fid="${f.id}" aria-label="Einstellungen">⋮</button></div>${priceBar(range)}`;
     if (settings) {
       // Einstellungen nur auf Wunsch (⚙️), nicht beim Aufklappen
@@ -1543,6 +1553,7 @@ function hideSheet() {
   S.replaceFor = null;
   S.sheetId = null;
   $('#sheet').hidden = true;
+  if (S.seenDirty) { S.seenDirty = false; setTimeout(rerender); }
 }
 function closeSheet() {
   if (S.sheetOpen) history.back(); // popstate blendet aus
@@ -1621,6 +1632,12 @@ async function openDetail(id) {
   if (!o) return;
   S.replaceFor = null;
   S.sheetId = id;
+  if (!S.seen.has(o.key) || isNewAll(o)) {
+    S.seen.add(o.key);
+    markSeen([o.key]);
+    o.variants.forEach(v => S.allRef?.add(v.id));
+    S.seenDirty = true;  // Liste darunter beim Schließen neu zeichnen
+  }
   const r = S.retailers[o.retailer] || { name: o.retailer, color: '#888' };
   const d = disc(o), old = oldPrice(o);
   const places = o.places.map(p => S.placeName[p] || p);
@@ -1872,7 +1889,7 @@ function renderChips() {
 function updateBadges() {
   if (!S.loaded) return;
   // Favoriten mit aktuellem Angebot (immer sichtbar, nicht nur neue)
-  const now = visible().filter(o => !o.upcoming);
+  const now = visible().filter(o => !upcoming(o));
   const onOffer = S.favs.filter(f => now.some(o => favMatch(f, o))).length;
   const fb = $('#favBadge');
   fb.hidden = !onOffer;
@@ -2736,7 +2753,7 @@ const GUIDE = [
     items: [
       ['＋ Hinzufügen', 'Kategorie und Produktgruppe wählen, Marken markieren. Hier gibt es auch Marken, die gerade nicht im Angebot sind (z.B. für später).'],
       ['🔍 Suche', 'oben im Reiter Favoriten sucht im ganzen Produktkatalog, auch nach Produkten ohne aktuelles Angebot. Eingrenzen nach Produktgruppe und Marke ist freiwillig. „☆ Als Favorit merken“ speichert Suchbegriff mit Auswahl; einzelne Produkte merkst du mit ☆.'],
-      ['Favorit antippen', 'klappt die passenden Angebote auf, das günstigste steht oben. „neu“ = noch nicht gesehene Angebote.'],
+      ['Favorit antippen', 'klappt die passenden Angebote auf: oben die schon gültigen, das günstigste zuerst, danach die erst ab nächster Woche gültigen (blau „ab Mo …“). „neu“ = noch nicht gesehene Angebote; geöffnete Angebote gelten als gesehen.'],
       ['Preis-Leiste', 'nur bei Favoriten mit aktuellem Angebot und ab 3 erfassten Angeboten: grün = günstig, rot = teuer im Vergleich der letzten 12 Monate. Der Strich in der Mitte ist der Durchschnitt, der Punkt das beste aktuelle Angebot.'],
       ['⋮ Einstellungen', 'Name, Vergleich nach Grundpreis oder Packungspreis (z.B. Kaffeekapseln), Preisalarm „max. … €“.'],
       ['Wischen', 'nach rechts = auf den Zettel (oben) bzw. wichtig (unten), nach links = Favorit entfernen (mit Rückfrage).'],
@@ -2775,7 +2792,7 @@ const GUIDE = [
       ['📱 1/13 Märkte', 'der beste Preis gilt nur in einem Teil der Märkte – die Details zeigen, wo.'],
       ['+ Marktkauf', 'dasselbe Angebot gibt es auch bei einem weiteren Händler derselben Kette.'],
       ['✓ / ❗ vor dem Titel', 'steht schon auf dem Zettel (❗ = als wichtig).'],
-      ['NEU, −30 %, bis Sa 03.10.', 'noch nicht gesehen, Rabatt laut Prospekt, Gültigkeit; „ab Mo …“ = Vorschau auf nächste Woche.'],
+      ['NEU, −30 %, bis Sa 03.10.', 'noch nicht gesehen (verschwindet, sobald du das Angebot öffnest), Rabatt laut Prospekt, Gültigkeit; „ab Mo …“ = gilt erst ab dann – auch im Favoriten-Kopf und auf dem Zettel.'],
     ] },
 ];
 
