@@ -1,6 +1,6 @@
-// Service Worker: App-Gerüst aus dem Cache, API-Daten "network first" mit Offline-Fallback.
+// Service Worker: App-Gerüst sofort aus dem Cache (im Hintergrund aktualisiert), API-Daten "network first" mit Offline-Fallback.
 // Pfade relativ zum Ort des Service Workers, damit die App auch unter …github.io/<repo>/ läuft.
-const SHELL = 'shell-v68';
+const SHELL = 'shell-v69';
 const DATA = 'data-v1';
 const BASE = new URL('./', self.location).pathname;
 const SHELL_FILES = ['./', 'index.html', 'app.js', 'cloud.js', 'goods.js', 'brands.js', 'match.js', 'list.js', 'config.js', 'style.css', 'manifest.webmanifest',
@@ -29,15 +29,20 @@ self.addEventListener('fetch', e => {
       .catch(() => caches.match(e.request)));
     return;
   }
-  // Gerüst: erst Netz, dabei den HTTP-Cache umgehen (GitHub Pages erlaubt 10 Min. Zwischenspeichern) –
-  // unveränderte Dateien kosten dank ETag kaum Daten; offline aus dem Cache
+  // Gerüst: sofort aus dem Cache (schneller Start, v.a. auf langsamen Geräten), parallel aus dem Netz
+  // aktualisieren – dabei den HTTP-Cache umgehen (GitHub Pages erlaubt 10 Min. Zwischenspeichern; unveränderte
+  // Dateien kosten dank ETag kaum Daten). Neue Versionen kommen so beim nächsten Start bzw. über einen neuen
+  // Service Worker (SHELL-Nummer), auf den die App mit Neuladen reagiert.
   // (Seitenaufrufe lassen sich nicht mit Optionen weiterreichen -> neu über die URL anfragen)
   const fresh = e.request.mode === 'navigate'
     ? new Request(e.request.url, { cache: 'no-cache', credentials: 'same-origin' })
     : new Request(e.request, { cache: 'no-cache' });
-  e.respondWith(fetch(fresh)
-    .then(r => { const copy = r.clone(); caches.open(SHELL).then(c => c.put(e.request, copy)); return r; })
-    .catch(() => caches.match(e.request).then(r => r || caches.match(BASE))));
+  const net = fetch(fresh).then(r => {
+    if (r.ok) { const copy = r.clone(); caches.open(SHELL).then(c => c.put(e.request, copy)); }
+    return r;
+  });
+  e.waitUntil(net.catch(() => {}));
+  e.respondWith(caches.match(e.request).then(hit => hit || net.catch(() => caches.match(BASE))));
 });
 
 /* ---------- Push nach dem Abruf: neue Favoriten-Angebote zählen und anzeigen ---------- */

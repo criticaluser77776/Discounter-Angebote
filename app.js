@@ -40,8 +40,8 @@ const DATA = CFG.source === 'server' ? {
   refresh: () => fetch('api/refresh', { method: 'POST' }),
 } : {
   server: false,  // Supabase (cloud.js): Daten lädt der PC zu Hause hoch
-  offers: () => Cloud.offers(),
-  catalog: () => Cloud.catalog(),
+  offers: () => Cloud.offers(dataUpdated),
+  catalog: () => Cloud.catalog(dataUpdated),
   history: key => Cloud.history(key),
   status: async () => ({ fetch: { running: false }, log: [], ...await Cloud.status() }),
 };
@@ -53,6 +53,36 @@ const ICONS = {
   'Wein & Sekt': '🍷', 'Spirituosen': '🥃', 'Drogerie & Pflege': '🧴', 'Baby & Kind': '🍼',
   'Haushalt & Reinigung': '🧽', 'Tierbedarf': '🐾', 'Non-Food': '🛋️', 'Sonstiges': '📦',
 };
+// Ältere Systeme (z.B. Android 7) kennen neuere Emojis nicht und zeigen graue Kästchen: dort durch ältere ersetzen.
+// Erkannt am Vergleich mit einem sicher unbekannten Emoji (Unicode 15); ersetzt wird in ICONS und per
+// MutationObserver in allen neu eingefügten Texten (Zettel-Kategorien, Rundgang, …)
+const EMO_OLD = { '🥤': '🍹', '🥦': '🥕', '🥩': '🍖', '🥫': '🍲', '🧂': '🌶️', '🧈': '🥛', '🧊': '❄️', '🧴': '💄', '🧽': '🚿' };
+const EMO_FIX = (() => {
+  try {
+    const c = document.createElement('canvas');
+    c.width = c.height = 24;
+    const x = c.getContext('2d', { willReadFrequently: true });
+    const sig = s => {
+      x.clearRect(0, 0, 24, 24); x.font = '20px sans-serif'; x.textBaseline = 'top'; x.fillText(s, 0, 0);
+      return x.getImageData(0, 0, 24, 24).data.join();
+    };
+    return sig('🥦') === sig('\u{1FAE8}');
+  } catch { return false; }
+})();
+if (EMO_FIX) {
+  const has = new RegExp(Object.keys(EMO_OLD).join('|'), 'u'), all = new RegExp(has.source, 'gu');
+  const fix = s => s.replace(all, m => EMO_OLD[m]);
+  for (const k in ICONS) ICONS[k] = fix(ICONS[k]);
+  const walk = root => {
+    if (root.nodeType === 3) { if (has.test(root.data)) root.data = fix(root.data); return; }
+    if (root.nodeType !== 1) return;
+    const w = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    for (let n = w.nextNode(); n; n = w.nextNode()) if (has.test(n.data)) n.data = fix(n.data);
+  };
+  new MutationObserver(ms => { for (const m of ms) m.addedNodes.forEach(walk); })
+    .observe(document.documentElement, { childList: true, subtree: true });
+  if (document.body) walk(document.body);
+}
 const UNIT_NAMES = { kg: 'je kg', l: 'je Liter', Stk: 'je Stück', WL: 'je Waschladung', 'Anw.': 'je Anwendung', m: 'je Meter' };
 const WD = ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa'];
 const OTHER = 'Weitere';
@@ -1398,6 +1428,8 @@ function morePanel(id) {
         ${THEMES.map(([k, l]) => `<option value="${k}" ${f.theme === k ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
       <label class="line">Start-Tab <select data-set="startTab">
         ${START_TABS.map(([k, l]) => `<option value="${k}" ${(f.startTab || '') === k ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
+      <label class="line switch"><input type="checkbox" data-set="rbswap" ${f.rbswap ? 'checked' : ''}> Rot und Blau tauschen</label>
+      <p class="muted" style="margin:0 0 4px;font-size:.85rem">Nur für Geräte, die Farben vertauscht anzeigen (z.B. älteres Tablet mit Firefox ohne Grafikbeschleunigung): Käse und der Stern erscheinen dann blau statt gelb.</p>
       ${pushAvailable() ? `<label class="line switch"><input type="checkbox" data-push ${load('push', false) && Notification.permission === 'granted' ? 'checked' : ''}>
         🔔 Benachrichtigung bei neuen Favoriten-Angeboten</label>
         <p class="muted" style="margin:0 0 4px;font-size:.85rem">Nach dem Abruf (5 und 14 Uhr) zählt die App neue Angebote deiner Favoriten und zeigt sie als Hinweis bzw. Zahl am App-Symbol.</p>` : ''}
@@ -1932,6 +1964,11 @@ function updateBadges() {
 function applyTheme() {
   if (S.f.theme === 'auto') document.documentElement.removeAttribute('data-theme');
   else document.documentElement.dataset.theme = S.f.theme;
+  // Farbkorrektur (Mehr → Darstellung, je Gerät): Firefox auf älteren Android-Tablets (z.B. Galaxy Tab 2) zeichnet
+  // mit OpenGL fehlerhaft (alte Inhalte bleiben stehen) und ohne OpenGL (gfx.webrender.software.opengl = false) mit
+  // vertauschtem Rot/Blau – der Filter #rbswap (index.html) tauscht die Kanäle zurück. Von der Seite aus nicht
+  // erkennbar (Canvas liest korrekte Farben), daher nur von Hand
+  document.body.classList.toggle('rbswap', !!S.f.rbswap);
 }
 
 // App geht in den Hintergrund: aktuellen Stand für Push-Zählung sichern; zurück im Vordergrund: Zähler am Symbol löschen
@@ -2397,7 +2434,7 @@ document.addEventListener('change', e => {
     const k = el.dataset.set;
     S.f[k] = el.type === 'checkbox' ? el.checked : el.value;
     save('filters', S.f);
-    if (k === 'theme') applyTheme();
+    if (k === 'theme' || k === 'rbswap') applyTheme();
     applyEff();
     updateBadges();
     return;
@@ -2511,6 +2548,14 @@ document.addEventListener('keydown', e => { if (e.key === 'Escape' && S.sheetOpe
 })();
 
 /* ---------- Start ---------- */
+
+// cloud.js hat im Hintergrund einen neuen Stand geladen (Angebote/Katalog kamen zunächst aus dem Speicher)
+function dataUpdated(name, err) {
+  if (err instanceof LoginNeeded) { showLogin(err.message); return; }
+  if (err) return;
+  if (name === 'offers') loadData();
+  else if (name === 'catalog' && S.catalog) loadCatalog().then(() => { if (route()[0] === 'favs') rerender(); }).catch(() => {});
+}
 
 async function loadData() {
   try {
@@ -2808,7 +2853,7 @@ const GUIDE = [
       ['👥 Gruppe', 'dein Name (erscheint als „von …“ auf dem Zettel), Mitglieder mit letztem Besuch, Gruppen-Code. Admins benennen und entfernen Mitglieder und erzeugen einen neuen Code.'],
       ['📍 Gebiet & Händler', 'Wohnort mit Umkreis, optional eine Strecke (z.B. Arbeitsweg) und die Händler – gilt für die ganze Gruppe (legt der Admin fest).'],
       ['🔎 Filter', 'welche Apps/Kundenkarten du nutzt (sonst zählt der Normalpreis), Kategorien ausblenden, einzelne Märkte wählen oder „Keiner“, Online- und Vorschau-Angebote.'],
-      ['🎨 Darstellung', 'Farbschema, Start-Tab und 🔔 Benachrichtigung bei neuen Favoriten-Angeboten (nach dem Abruf um 5 und 14 Uhr, mit Zahl am App-Symbol).'],
+      ['🎨 Darstellung', 'Farbschema, Start-Tab, „Rot und Blau tauschen“ (nur für Geräte mit vertauschten Farben) und 🔔 Benachrichtigung bei neuen Favoriten-Angeboten (nach dem Abruf um 5 und 14 Uhr, mit Zahl am App-Symbol; braucht auf Android die Google-Dienste).'],
       ['📊 Daten & Abruf', 'Stand der Angebote und der einzelnen Quellen; Admins sehen das Kontingent der kostenlosen Dienste.'],
       ['💬 Feedback', 'Fehler oder Ideen direkt an den Entwickler schicken.'],
     ] },
@@ -3022,5 +3067,15 @@ function boot() {
       if (Cloud.switchedGroup()) { liResetGroup(); liFavsPush(S.favs); Sync.run(); liRefresh(); }
     }).catch(() => {});
   }
-  if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
+  if ('serviceWorker' in navigator) {
+    const had = !!navigator.serviceWorker.controller;
+    let done = false;
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (!had || done) return;
+      done = true;
+      if (performance.now() < 20000) location.reload();
+      else document.addEventListener('visibilitychange', () => { if (!document.hidden) location.reload(); });
+    });
+    navigator.serviceWorker.register('sw.js').catch(() => {});
+  }
 }

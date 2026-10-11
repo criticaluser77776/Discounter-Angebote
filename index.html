@@ -31,6 +31,11 @@
   <div class="sheet-body" role="dialog" aria-modal="true"></div>
 </div>
 
+<!-- Farbkorrektur Rot/Blau (Mehr → Darstellung, body.rbswap) -->
+<svg class="rb-svg" width="0" height="0" aria-hidden="true" style="position:absolute">
+  <filter id="rbswap" color-interpolation-filters="sRGB"><feColorMatrix type="matrix" values="0 0 1 0 0  0 1 0 0 0  1 0 0 0 0  0 0 0 1 0"/></filter>
+</svg>
+
 <nav class="tabs">
   <a href="#/" data-tab="browse"><span>🗂️</span>Kategorien</a>
   <a href="#/all" data-tab="all"><span>🏷️</span>Alle</a>

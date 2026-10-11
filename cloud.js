@@ -56,12 +56,22 @@ const Cloud = (() => {
     return prefer?.includes('return=minimal') ? null : r.json();
   }
 
-  // Große Datensätze (Angebote, Katalog): nur neu laden, wenn sich der Stand geändert hat; offline aus dem Cache
-  async function cachedData(name) {
+  // Große Datensätze (Angebote, Katalog): nur neu laden, wenn sich der Stand geändert hat; offline aus dem Cache.
+  // Mit onUpdate: gespeicherten Stand sofort liefern (schneller Start), Abgleich im Hintergrund –
+  // onUpdate(name) bei neuem Stand, onUpdate(name, fehler) bei Fehlern (z.B. Gruppen-Code geändert)
+  async function cachedData(name, onUpdate) {
     const req = new Request(`https://cache.local/${name}`);
     let cache = null;
     try { cache = await caches.open(CACHE); } catch { /* kein Cache (z.B. privater Modus) */ }
     const cached = cache && await cache.match(req);
+    if (cached && onUpdate) {
+      const was = cached.headers.get('x-updated');
+      cachedData(name).then(async () => {
+        const now = await cache.match(req);
+        if (now && now.headers.get('x-updated') !== was) onUpdate(name);
+      }).catch(err => onUpdate(name, err));
+      return cached.json();
+    }
     try {
       const meta = await rest(`app_data?key=eq.${name}&select=updated_at`);
       if (!meta.length) {
@@ -156,8 +166,8 @@ const Cloud = (() => {
       return code;
     },
 
-    offers: () => cachedData('offers'),
-    catalog: () => cachedData('catalog'),
+    offers: onUpdate => cachedData('offers', onUpdate),
+    catalog: onUpdate => cachedData('catalog', onUpdate),
     async status() {
       const rows = await rest('app_data?key=eq.status&select=data');
       return rows[0]?.data || {};

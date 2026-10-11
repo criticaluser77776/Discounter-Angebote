@@ -822,3 +822,7 @@ details.mk summary .muted { font-size: .85rem; margin-left: auto; }
 .fav .sec-head { background: var(--surface-2); padding: 10px 16px 0; margin-bottom: -6px; }
 .pbar-dot.fut { width: 12px; height: 12px; margin: -6px 0 0 -6px; background: var(--blue-soft); border: 2px solid var(--blue); box-shadow: none; }
 .li-fut { font-weight: 700; }
+
+/* Farbkorrektur Rot/Blau (Mehr → Darstellung): Filter je Element direkt unter body – nicht auf body selbst,
+   sonst bezögen sich die festen Elemente (Kopf, Tab-Leiste, Fenster) auf body statt auf den Bildschirm */
+body.rbswap > :not(script):not(.rb-svg) { filter: url(#rbswap); }
