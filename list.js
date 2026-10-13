@@ -653,7 +653,8 @@ function liRow(it, best) {
     const n = m.length ? liSearchOffers(it).length : 0;  // Anzahl wie Suche / langes Drücken
     if (m.length) sub.push(`<span class="li-hint">💡 im Angebot: ${esc(rname(m[0]))} ${esc(priceLine(m[0]))}${n > 1 ? ` · ${n} Angebote` : ''}${liFut(m, false)}</span> ${fromTag(m[0])}`);
   }
-  if (!liSimple() && Cloud.enabled && it.by && it.by !== Cloud.name()) sub.push(`von ${esc(it.by)}`);
+  const whoHint = liWhoHint(it);
+  if (whoHint) sub.push(whoHint);
   const q = qtyLabel(it);
   const qe = LI.qtyId === it.id && !it.done;  // angetippt: Menge als Textfeld, ⚙️ statt Abhaken
   // konkrete Angebote: Artikelbild statt Kategorie-Symbol, Name einzeilig gekürzt
@@ -668,7 +669,7 @@ function liRow(it, best) {
     <div class="li-fg">
       ${img ? `<span class="li-ico li-img" style="--c:${c.color}" title="${esc(c.name)}"><img loading="lazy" referrerpolicy="no-referrer" src="${esc(img)}" alt="" onerror="this.replaceWith('${c.emoji}')"></span>`
         : `<span class="li-ico" style="--c:${c.color}" title="${esc(c.name)}">${c.emoji}</span>`}
-      <div class="li-t" data-act="liEdit" data-lid="${it.id}">${nameHtml}${sub.length ? `<small>${sub.join(' · ')}</small>` : ''}${qe || LI.infoId === it.id ? liInfoHtml(it) : ''}</div>
+      <div class="li-t" data-act="liEdit" data-lid="${it.id}">${nameHtml}${sub.length ? `<small>${sub.join(' · ')}</small>` : ''}${it.done && LI.infoId === it.id ? liInfoHtml(it) : ''}</div>
       ${qe ? `<input class="li-qin" data-liq="text" data-lid="${it.id}" value="${esc(q)}" placeholder="Menge" enterkeyhint="done" aria-label="Menge, z.B. 2 kg">`
         : q ? `<span class="li-q">${esc(q)}</span>` : ''}
       ${p && !qe ? liPriceHtml(it, best, p) : ''}
@@ -682,15 +683,29 @@ const liWhen = ts => {
   const d = new Date(ts), days = Math.round((new Date().setHours(0, 0, 0, 0) - new Date(ts).setHours(0, 0, 0, 0)) / 864e5);
   return days === 0 ? 'heute' : days === 1 ? 'gestern' : `am ${WD[d.getDay()]} ${d.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' })}`;
 };
+// Erstellzeit (ältere Einträge ohne „at“: Zeit steckt in der ID), null wenn unbekannt
+function liCreated(it) {
+  const t = it.at || parseInt(it.id.slice(0, 8), 36);
+  return t > 1.5e12 && t <= Date.now() + 864e5 ? t : null;
+}
+// Hinweis in der Zeile (nur Ansicht „Details“): offen „von Anna · gestern“ (nur fremde Einträge),
+// abgehakt „✓ Ben · heute“
+const liByOther = it => Cloud.enabled && it.by && it.by !== Cloud.name();
+function liWhoHint(it) {
+  if (liSimple()) return '';
+  if (it.done) return it.dt ? `✓ ${it.dby ? esc(it.dby) + ' · ' : ''}${liWhen(it.dt)}` : '';
+  if (!liByOther(it)) return '';
+  const c = liCreated(it);
+  return `von ${esc(it.by)}${c ? ` · ${liWhen(c)}` : ''}`;
+}
+// abgehakte Einträge antippen: Zusatzinfo mit dem, was nicht schon als Hinweis in der Zeile steht
 function liInfoHtml(it) {
-  const created = it.at || parseInt(it.id.slice(0, 8), 36);  // ältere Einträge: Zeit steckt in der ID
   const who = n => n ? ` von ${esc(n)}` : '';
-  const parts = [];
-  if (created > 1.5e12 && created <= Date.now() + 864e5) parts.push(`＋ erstellt${who(it.by)} ${liWhen(created)}`);
-  else if (it.by) parts.push(`＋ erstellt${who(it.by)}`);
-  if (it.dt) parts.push(`✓ ${it.done ? '' : 'zuletzt '}abgehakt${who(it.dby)} ${liWhen(it.dt)}`);
-  return `<span class="li-info">${parts.join('<br>') || 'keine Angaben'}${it.done
-    ? `<button class="btn small li-info-edit" data-act="liQSet" data-lid="${it.id}">⚙️ Bearbeiten</button>` : ''}</span>`;
+  const parts = [], c = liCreated(it);
+  if (c || it.by) parts.push(`＋ erstellt${who(it.by)}${c ? ' ' + liWhen(c) : ''}`);
+  if (it.dt && liSimple()) parts.push(`✓ abgehakt${who(it.dby)} ${liWhen(it.dt)}`);
+  return `<span class="li-info">${parts.join('<br>') || 'keine weiteren Angaben'}
+    <button class="btn small li-info-edit" data-act="liQSet" data-lid="${it.id}">⚙️ Bearbeiten</button></span>`;
 }
 
 // Notiz: kleines 🗒️ hinter dem Namen (in beiden Ansichten), antippen klappt den Text darunter auf/zu
