@@ -677,11 +677,10 @@ function liRow(it, best) {
     </div></div>`;
 }
 
-// Info-Zeile beim Antippen: wer hat den Eintrag wann erstellt und zuletzt abgehakt
+// Info-Zeile beim Antippen: wer hat den Eintrag wann erstellt und zuletzt abgehakt (nur Tag, ohne Uhrzeit)
 const liWhen = ts => {
   const d = new Date(ts), days = Math.round((new Date().setHours(0, 0, 0, 0) - new Date(ts).setHours(0, 0, 0, 0)) / 864e5);
-  const time = d.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
-  return `${days === 0 ? 'heute' : days === 1 ? 'gestern' : `${WD[d.getDay()]} ${d.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' })}`} ${time}`;
+  return days === 0 ? 'heute' : days === 1 ? 'gestern' : `am ${WD[d.getDay()]} ${d.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' })}`;
 };
 function liInfoHtml(it) {
   const created = it.at || parseInt(it.id.slice(0, 8), 36);  // ältere Einträge: Zeit steckt in der ID
