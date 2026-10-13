@@ -105,6 +105,7 @@ const LI = {
   draft: '',
   prioNext: false,
   noteOpen: new Set(),  // Einträge, deren Notiz aufgeklappt ist (🗒️ antippen)
+  infoId: null,  // abgehakter Eintrag, dessen Info-Zeile (erstellt/abgehakt) aufgeklappt ist
   histOpen: false, histAll: false, histSort: load('li.histSort', 'last'),  // Schalter ❗ neben der Eingabe: nächster Eintrag wird als wichtig angelegt
   editId: null,
   lock: null,
@@ -442,7 +443,7 @@ function liAddFree(name, qty, unit, prio = false) {
   if (ex) {
     if (prio) ex.prio = true;
     if (ex.done) {
-      Object.assign(ex, { done: false, dt: null });
+      ex.done = false;  // dt/dby bleiben: „zuletzt abgehakt“ in der Info-Zeile
       if (qty) Object.assign(ex, { qty, unit });
       toast(`„${ex.name}“ wieder auf dem Zettel`);
     } else {
@@ -456,7 +457,7 @@ function liAddFree(name, qty, unit, prio = false) {
     return ex;
   }
   const it = { id: liNewId(), kind: 'free', name, qty, unit: unit || '', note: '', prio: !!prio, cat: liGuess(name),
-    price: null, pm: null, done: false, dt: null, by: Cloud.name() };
+    price: null, pm: null, done: false, dt: null, by: Cloud.name(), at: Date.now() };
   put('item', it);
   liRemember(it);
   return it;
@@ -486,7 +487,8 @@ const offerSnap = o => ({
 const liOfferItem = o => liOpen().find(i => i.kind === 'offer' && i.offer?.id === o.id);
 
 function liSetDone(it, done) {
-  Object.assign(it, { done, dt: done ? Date.now() : null });
+  // dt/dby (zuletzt abgehakt, von wem) bleiben beim Zurückholen erhalten – für die Info-Zeile
+  Object.assign(it, done ? { done, dt: Date.now(), dby: Cloud.name() } : { done });
   put('item', it);
   if (done) liBought(it);
 }
@@ -539,14 +541,14 @@ const Li = {
     const learned = R.learn.get(nkey(name));
     put('item', { id: liNewId(), kind: 'offer', name, qty: 1, unit: '', note: '', price: null, pm: null,
       cat: learned && !learned.del ? learned.cat : LI_OFFER_CAT[o.category] || 'sonstiges',
-      offer: offerSnap(o), done: false, dt: null, by: Cloud.name(), prio });
+      offer: offerSnap(o), done: false, dt: null, by: Cloud.name(), at: Date.now(), prio });
     toast(prio ? '❗ Wichtig auf den Einkaufszettel' : '＋ Auf den Einkaufszettel');
   },
   addWish(filter, label, parsed) {
     const { id, ...fav } = filter;
     put('item', { id: liNewId(), kind: 'wish', name: label, fav, qty: parsed?.qty || 1, unit: parsed?.unit || '', note: '',
       price: null, pm: null, prio: !!parsed?.prio,
-      cat: LI_OFFER_CAT[fav.category] || liGuess(label), done: false, dt: null, by: Cloud.name() });
+      cat: LI_OFFER_CAT[fav.category] || liGuess(label), done: false, dt: null, by: Cloud.name(), at: Date.now() });
     liRemember([...R.item.values()].filter(i => i.kind === 'wish' && i.name === label).pop());
     toast(`＋ „${label}“ auf den Einkaufszettel`);
   },
@@ -666,13 +668,30 @@ function liRow(it, best) {
     <div class="li-fg">
       ${img ? `<span class="li-ico li-img" style="--c:${c.color}" title="${esc(c.name)}"><img loading="lazy" referrerpolicy="no-referrer" src="${esc(img)}" alt="" onerror="this.replaceWith('${c.emoji}')"></span>`
         : `<span class="li-ico" style="--c:${c.color}" title="${esc(c.name)}">${c.emoji}</span>`}
-      <div class="li-t" data-act="liEdit" data-lid="${it.id}">${nameHtml}${sub.length ? `<small>${sub.join(' · ')}</small>` : ''}</div>
+      <div class="li-t" data-act="liEdit" data-lid="${it.id}">${nameHtml}${sub.length ? `<small>${sub.join(' · ')}</small>` : ''}${qe || LI.infoId === it.id ? liInfoHtml(it) : ''}</div>
       ${qe ? `<input class="li-qin" data-liq="text" data-lid="${it.id}" value="${esc(q)}" placeholder="Menge" enterkeyhint="done" aria-label="Menge, z.B. 2 kg">`
         : q ? `<span class="li-q">${esc(q)}</span>` : ''}
       ${p && !qe ? liPriceHtml(it, best, p) : ''}
       ${qe ? `<button class="check li-qset" data-act="liQSet" data-lid="${it.id}" aria-label="Einstellungen">⚙️</button>`
         : `<button class="check${it.done ? ' on' : ''}" data-act="liToggle" data-lid="${it.id}" aria-label="${it.done ? 'wieder auf den Zettel' : 'abhaken'}">✓</button>`}
     </div></div>`;
+}
+
+// Info-Zeile beim Antippen: wer hat den Eintrag wann erstellt und zuletzt abgehakt
+const liWhen = ts => {
+  const d = new Date(ts), days = Math.round((new Date().setHours(0, 0, 0, 0) - new Date(ts).setHours(0, 0, 0, 0)) / 864e5);
+  const time = d.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+  return `${days === 0 ? 'heute' : days === 1 ? 'gestern' : `${WD[d.getDay()]} ${d.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' })}`} ${time}`;
+};
+function liInfoHtml(it) {
+  const created = it.at || parseInt(it.id.slice(0, 8), 36);  // ältere Einträge: Zeit steckt in der ID
+  const who = n => n ? ` von ${esc(n)}` : '';
+  const parts = [];
+  if (created > 1.5e12 && created <= Date.now() + 864e5) parts.push(`＋ erstellt${who(it.by)} ${liWhen(created)}`);
+  else if (it.by) parts.push(`＋ erstellt${who(it.by)}`);
+  if (it.dt) parts.push(`✓ ${it.done ? '' : 'zuletzt '}abgehakt${who(it.dby)} ${liWhen(it.dt)}`);
+  return `<span class="li-info">${parts.join('<br>') || 'keine Angaben'}${it.done
+    ? `<button class="btn small li-info-edit" data-act="liQSet" data-lid="${it.id}">⚙️ Bearbeiten</button>` : ''}</span>`;
 }
 
 // Notiz: kleines 🗒️ hinter dem Namen (in beiden Ansichten), antippen klappt den Text darunter auf/zu
@@ -1119,8 +1138,9 @@ Object.assign(onClick, {
     if (swiped()) return;
     const it = liById(el);
     if (!it) return;
+    const prev = { dt: it.dt, dby: it.dby };  // Rückgängig: auch „zuletzt abgehakt“ zurücksetzen
     liSetDone(it, !it.done);
-    if (it.done) toast(`✓ ${it.name}`, { label: 'Rückgängig', fn: () => { liSetDone(it, false); liRefresh(); } });
+    if (it.done) toast(`✓ ${it.name}`, { label: 'Rückgängig', fn: () => { Object.assign(it, prev); liSetDone(it, false); liRefresh(); } });
     liRefresh();
   },
   liNote: el => {
@@ -1145,14 +1165,14 @@ Object.assign(onClick, {
     if (swiped()) return;
     const it = liById(el);
     if (!it) return;
-    if (it.done) { liEditSheet(it); return; }
+    if (it.done) { LI.infoId = LI.infoId === it.id ? null : it.id; liRefresh(); return; }  // Info auf/zu, ⚙️ darin bearbeitet
     if (LI.qtyClosed?.id === it.id && Date.now() - LI.qtyClosed.t < 500) return;
     LI.qtyId = LI.qtyId === it.id ? null : it.id;  // erneut antippen schließt das Mengenfeld
     liRefresh();
     // Mengenfeld fokussieren, aber ohne Tastatur (inputmode none) – erst ein Tipp ins Feld öffnet sie
     if (LI.qtyId) { const inp = $(`.li-qin[data-lid="${it.id}"]`); if (inp) { inp.inputMode = 'none'; inp.focus(); inp.select(); } }
   },
-  liQSet: el => { const it = liById(el); if (it) { LI.qtyId = null; liRefresh(); liEditSheet(it); } },
+  liQSet: el => { const it = liById(el); if (it) { LI.qtyId = LI.infoId = null; liRefresh(); liEditSheet(it); } },
 
   liView: el => { LI.view = el.dataset.v; save('li.view', LI.view); save('li.viewV2', true); renderShop(); },
   liMatch: el => {
@@ -1484,8 +1504,9 @@ function liShowOffers(it) {
     if (hx && s.dx < -limit) { liHistDelete(hx); return; }
     const it = R.item.get(s.row.dataset.lid);
     if (it && s.dx > limit) {
+      const prev = { dt: it.dt, dby: it.dby };
       liSetDone(it, !it.done);
-      if (it.done) toast(`✓ ${it.name}`, { label: 'Rückgängig', fn: () => { liSetDone(it, false); liRefresh(); } });
+      if (it.done) toast(`✓ ${it.name}`, { label: 'Rückgängig', fn: () => { Object.assign(it, prev); liSetDone(it, false); liRefresh(); } });
       liRefresh();
     } else if (it && s.dx < -limit) {
       liDelete(it);

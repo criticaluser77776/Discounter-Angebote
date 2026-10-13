@@ -94,6 +94,7 @@ const S = {
   brands: new Set(), brandOnly: false,           // Markenfilter in der Gruppenansicht
   draft: null, pickOpen: null, pickQ: '',         // Favoriten-Auswahl
   open: new Set(), favSet: new Set(), sheetId: null, sheetOpen: false,
+  lastOffer: new Map(), lastOfferLoading: new Set(),  // Favoriten ohne Angebot: letztes Angebot je Produkt
   status: null, poll: null, wasRunning: false,
   sort: load('sort', 'unit'),
   f: Object.assign({ only: [], place: '', noApp: [], hideCats: [], markets: {}, hideOnline: true, onlyCurrent: false, theme: 'auto' },
@@ -1020,11 +1021,12 @@ function renderFavs() {
     const L = favLabel(f);
     const open = S.open.has(f.id), settings = S.favSet.has(f.id);
     const wish = Li.favWish(f);  // offener Wunsch zu diesem Favoriten auf dem Zettel?
+    const last = m.length ? [] : favLast(f);  // ohne Angebot: zuletzt gesehene Produkte aus dem Katalog
     h += `<section class="fav" data-fid="${f.id}"><div class="fav-h" data-act="favOpen" data-fid="${f.id}">
       ${own ? '<span class="fav-drag" aria-label="Verschieben" title="Zum Verschieben ziehen">⠿</span>' : ''}
       <span style="font-size:22px">${L.icon}</span>
       <div class="t"><b>${wish ? onListMark(wish.prio) : ''}${esc(L.title)}${fresh ? ` <span class="new">${fresh} neu</span>` : ''}</b>
-        <small>${esc(L.sub)}${pack ? ' · Packungspreis' : ''}${f.max ? ` · ${esc(maxLabel(f))}` : ''} · ${m.length ? `${m.length} Angebot${m.length === 1 ? '' : 'e'}` : 'kein Angebot'}</small></div>
+        <small>${esc(L.sub)}${pack ? ' · Packungspreis' : ''}${f.max ? ` · ${esc(maxLabel(f))}` : ''} · ${m.length ? `${m.length} Angebot${m.length === 1 ? '' : 'e'}` : `kein Angebot${last.length ? `, zuletzt ${dayAgo(lastSeen(last[0]))}` : ''}`}</small></div>
       <div class="fav-r">${best ? `<span class="fav-best${best.ea ? ' is-app' : ''}">ab ${best.ea ? '📱 ' : ''}${esc(pack ? `${fmt(best.ep)} €` : priceLine(best))}</span>
           <span class="fav-rt">${esc(rname(best))} ${fromTag(best)}</span>` : ''}</div>
       <button class="fav-more ${settings ? 'on' : ''}" data-act="favSettings" data-fid="${f.id}" aria-label="Einstellungen">⋮</button></div>
@@ -1048,7 +1050,8 @@ function renderFavs() {
         ${f.type === 'group' ? `<a class="btn small" href="#/add/${enc(f.category)}${f.group ? '/' + enc(f.group) : ''}">Auswahl bearbeiten</a>` : ''}
         <button class="btn small danger" data-act="favDel" data-fid="${f.id}">Löschen</button></div></div>`;
     }
-    if (open) {
+    if (open && !m.length) h += favLastHtml(f, last);
+    else if (open) {
       h += offerSections(m, { limit: 200, sort: metricSort(f), metric: metricSort(f), isNew, short: true });
       m.forEach(o => seenNow.push(o.key));
     }
@@ -1058,6 +1061,50 @@ function renderFavs() {
   // Aufgeklappte Treffer gelten nach kurzem Anzeigen als gesehen
   clearTimeout(S.seenTimer);
   if (seenNow.length) S.seenTimer = setTimeout(() => markSeen(seenNow), 2500);
+}
+
+// Favorit ohne aktuelles Angebot: passende Katalogprodukte, zuletzt gesehene zuerst (höchstens 3)
+function favLast(f) {
+  if (!S.catalog) return [];
+  const g = { ...f, max: null };
+  return S.catalog.filter(e => e.last_seen && favMatch(g, catOffer(e)))
+    .sort((a, b) => b.last_seen.localeCompare(a.last_seen)).slice(0, 3);
+}
+
+// zuletzt gesehen: Abruftag bzw. Beginn des letzten Angebots (Prospekte erscheinen vor dem Angebotsstart)
+const lastSeen = e => { const r = S.lastOffer.get(e.product_key); return r && r.valid_from > e.last_seen ? r.valid_from : e.last_seen; };
+const dayAgo = iso => {
+  const d = Math.round((Date.parse(today() + 'T00:00') - Date.parse(iso + 'T00:00')) / 864e5);
+  return d <= 0 ? 'heute' : d === 1 ? 'gestern' : d < 14 ? `vor ${d} Tagen` : `am ${dshort(iso)}`;
+};
+
+// aufgeklappter Favorit ohne Angebot: statt der Angebotsliste die zuletzt gesehenen Angebote (Händler und Preis aus
+// dem Preisverlauf, wird nachgeladen)
+function favLastHtml(f, last) {
+  if (!S.catalog) return '<div class="fav-last"><p class="muted">Lade Produktkatalog …</p></div>';
+  if (!last.length) return '<div class="fav-last"><p class="muted">Derzeit kein Angebot – bisher auch noch nie gesehen.</p></div>';
+  const pack = byPack(f);
+  const rows = last.map(e => {
+    const r = S.lastOffer.get(e.product_key);
+    if (r === undefined) loadLastOffer(e.product_key);
+    const where = r ? `${r.app_price ? '📱 ' : ''}${!pack && r.unit_price ? `${fmt(r.unit_price)} €/${esc(r.unit)} · ` : ''}${fmt(r.price)} € · ` +
+      `${esc(S.retailers[r.retailer]?.name || r.retailer)}` : r === null ? '' : 'lädt …';
+    const best = e.best && (!r || e.best.date !== r.valid_from || e.best.retailer !== r.retailer)
+      ? `Bestpreis bisher: ${!pack && e.best.unit_price ? `${fmt(e.best.unit_price)} €/${esc(e.best.unit)}` : `${fmt(e.best.price)} €`} · ` +
+        `${esc(S.retailers[e.best.retailer]?.name || e.best.retailer)} (${dshort(e.best.date)})` : '';
+    return `<div class="fav-last-row"><b>${esc(`${e.brand || ''} ${e.name || ''}`.trim())}</b>
+      <small>zuletzt ${dayAgo(lastSeen(e))}${where ? ` · ${where}` : ''}</small>${best ? `<small class="muted">${best}</small>` : ''}</div>`;
+  }).join('');
+  return `<div class="fav-last"><div class="sec-head">Derzeit kein Angebot – zuletzt gesehen</div>${rows}</div>`;
+}
+
+// letztes erfasstes Angebot eines Produkts (Preisverlauf), einmal je Sitzung; null = nichts gefunden
+function loadLastOffer(pk) {
+  if (S.lastOfferLoading.has(pk)) return;
+  S.lastOfferLoading.add(pk);
+  DATA.history(pk).then(rows => S.lastOffer.set(pk, rows.length ? rows[rows.length - 1] : null))
+    .catch(() => S.lastOffer.set(pk, null))
+    .finally(() => { S.lastOfferLoading.delete(pk); if (route()[0] === 'favs') rerender(); });
 }
 
 async function loadCatalog() {
