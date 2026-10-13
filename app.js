@@ -100,6 +100,7 @@ const S = {
   f: Object.assign({ only: [], place: '', noApp: [], hideCats: [], markets: {}, hideOnline: true, onlyCurrent: false, theme: 'auto' },
     load('filters', {}), { off: undefined, only: [] }),  // only = markierte Händler (leer = alle), gilt nur bis zum Neustart
   favs: load('favs', []),
+  favHideEmpty: load('favHideEmpty', false),  // Favoriten ohne aktuelles Angebot ausblenden (Schalter in der Sortierleiste)
   favSort: load('favSort', 'offers'),  // Favoriten: 'offers' = mit Angeboten zuerst, 'own' = eigene Reihenfolge
   seen: new Set(load('seen', [])),
   // „Alle“: Angebots-IDs beim letzten Verlassen des Reiters (null = noch nie besucht) – neu ist, was dort fehlte
@@ -1006,12 +1007,18 @@ function renderFavs() {
     const score = r => (r.range && r.range.n >= 3 && r.range.cur != null ? barPos(r.range, r.range.cur) : 101);
     rows.sort((a, b) => rank(a) - rank(b) || score(a) - score(b));
   }
+  // Schalter: Favoriten ohne Angebot ausblenden (nur sichtbar, wenn es solche gibt)
+  const empty = rows.filter(r => !r.m.length).length, hide = S.favHideEmpty && empty > 0;
   h += `<div class="sortbar"><span>${S.favs.length} Favorit${S.favs.length === 1 ? '' : 'en'}${own ? ' · zum Verschieben ⠿ ziehen' : ''}</span>
     <div class="seg"><button class="${own ? '' : 'on'}" data-act="favSort" data-s="offers">Angebote zuerst</button>
-    <button class="${own ? 'on' : ''}" data-act="favSort" data-s="own">Eigene Reihenfolge</button></div></div>`;
+    <button class="${own ? 'on' : ''}" data-act="favSort" data-s="own">Eigene Reihenfolge</button></div>
+    ${empty ? `<label class="fav-hide switch"><input type="checkbox" data-fav-hide ${S.favHideEmpty ? 'checked' : ''}>
+      ohne Angebot ausblenden <i>${empty}</i></label>` : ''}</div>`;
+  if (hide && empty === rows.length) h += '<p class="empty">Derzeit hat keiner deiner Favoriten ein Angebot.</p>';
   const seenNow = [];
   const isNew = o => !S.seen.has(o.key);
   for (const { f, m, range } of rows) {
+    if (hide && !m.length) continue;
     const pack = byPack(f);
     // ältere Favoriten: Preisalarm ohne gespeicherte Einheit -> vorherrschende Einheit der Treffer übernehmen
     if (f.max && !pack && !f.maxUnit) { f.maxUnit = dominantUnit(m) || 'kg'; save('favs', S.favs); }
@@ -2425,6 +2432,7 @@ document.addEventListener('click', e => {
 
 document.addEventListener('change', e => {
   const el = e.target;
+  if ('favHide' in el.dataset) { S.favHideEmpty = el.checked; save('favHideEmpty', el.checked); rerender(); return; }
   if ('setName' in el.dataset) {
     Cloud.setName(el.value);
     liFavsPush(S.favs);  // Favoriten unter dem neuen Namen abgleichen
@@ -2584,8 +2592,11 @@ document.addEventListener('keydown', e => { if (e.key === 'Escape' && S.sheetOpe
     el.classList.remove('dragging');
     S.dragDone = Date.now();  // folgenden Klick (Auf-/Zuklappen) ignorieren
     if (!moved) return;
-    const order = [...view.querySelectorAll('.fav')].map(s => s.dataset.fid);
-    S.favs.sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id));
+    // ausgeblendete Favoriten (ohne Angebot) behalten ihren Platz, die sichtbaren werden neu verteilt
+    const order = [...view.querySelectorAll('.fav')].map(s => s.dataset.fid), shown = new Set(order);
+    const byId = new Map(S.favs.map(f => [f.id, f]));
+    let k = 0;
+    S.favs.splice(0, S.favs.length, ...S.favs.map(f => shown.has(f.id) ? byId.get(order[k++]) : f));
     S.favs.forEach((f, i) => { f.order = i; });
     saveFavs();
     rerender();
