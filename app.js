@@ -100,7 +100,7 @@ const S = {
   f: Object.assign({ only: [], place: '', noApp: [], hideCats: [], markets: {}, hideOnline: true, onlyCurrent: false, theme: 'auto' },
     load('filters', {}), { off: undefined, only: [] }),  // only = markierte Händler (leer = alle), gilt nur bis zum Neustart
   favs: load('favs', []),
-  favHideEmpty: load('favHideEmpty', false),  // Favoriten ohne aktuelles Angebot ausblenden (Schalter in der Sortierleiste)
+  favEmptyOpen: load('favEmptyOpen', false),  // Favoriten: Bereich „Ohne aktuelles Angebot“ unten aufgeklappt?
   favSort: load('favSort', 'offers'),  // Favoriten: 'offers' = mit Angeboten zuerst, 'own' = eigene Reihenfolge
   seen: new Set(load('seen', [])),
   // „Alle“: Angebots-IDs beim letzten Verlassen des Reiters (null = noch nie besucht) – neu ist, was dort fehlte
@@ -1007,18 +1007,19 @@ function renderFavs() {
     const score = r => (r.range && r.range.n >= 3 && r.range.cur != null ? barPos(r.range, r.range.cur) : 101);
     rows.sort((a, b) => rank(a) - rank(b) || score(a) - score(b));
   }
-  // Schalter: Favoriten ohne Angebot ausblenden (nur sichtbar, wenn es solche gibt)
-  const empty = rows.filter(r => !r.m.length).length, hide = S.favHideEmpty && empty > 0;
+  // Favoriten ohne aktuelles Angebot: unten in einem eigenen, auf- und zuklappbaren Bereich
+  const empty = rows.filter(r => !r.m.length).length;
   h += `<div class="sortbar"><span>${S.favs.length} Favorit${S.favs.length === 1 ? '' : 'en'}${own ? ' · zum Verschieben ⠿ ziehen' : ''}</span>
     <div class="seg"><button class="${own ? '' : 'on'}" data-act="favSort" data-s="offers">Angebote zuerst</button>
-    <button class="${own ? 'on' : ''}" data-act="favSort" data-s="own">Eigene Reihenfolge</button></div>
-    ${empty ? `<label class="fav-hide switch"><input type="checkbox" data-fav-hide ${S.favHideEmpty ? 'checked' : ''}>
-      ohne Angebot ausblenden <i>${empty}</i></label>` : ''}</div>`;
-  if (hide && empty === rows.length) h += '<p class="empty">Derzeit hat keiner deiner Favoriten ein Angebot.</p>';
+    <button class="${own ? 'on' : ''}" data-act="favSort" data-s="own">Eigene Reihenfolge</button></div></div>`;
+  if (empty === rows.length) h += '<p class="empty">Derzeit hat keiner deiner Favoriten ein Angebot.</p>';
+  const head = h;
+  let withOffer = '', without = '';
   const seenNow = [];
   const isNew = o => !S.seen.has(o.key);
   for (const { f, m, range } of rows) {
-    if (hide && !m.length) continue;
+    if (!m.length && !S.favEmptyOpen) continue;
+    h = '';
     const pack = byPack(f);
     // ältere Favoriten: Preisalarm ohne gespeicherte Einheit -> vorherrschende Einheit der Treffer übernehmen
     if (f.max && !pack && !f.maxUnit) { f.maxUnit = dominantUnit(m) || 'kg'; save('favs', S.favs); }
@@ -1029,8 +1030,8 @@ function renderFavs() {
     const open = S.open.has(f.id), settings = S.favSet.has(f.id);
     const wish = Li.favWish(f);  // offener Wunsch zu diesem Favoriten auf dem Zettel?
     const last = m.length ? [] : favLast(f);  // ohne Angebot: zuletzt gesehene Produkte aus dem Katalog
-    h += `<section class="fav" data-fid="${f.id}"><div class="fav-h" data-act="favOpen" data-fid="${f.id}">
-      ${own ? '<span class="fav-drag" aria-label="Verschieben" title="Zum Verschieben ziehen">⠿</span>' : ''}
+    h += `<section class="fav${m.length ? '' : ' fav-empty'}" data-fid="${f.id}"><div class="fav-h" data-act="favOpen" data-fid="${f.id}">
+      ${own && m.length ? '<span class="fav-drag" aria-label="Verschieben" title="Zum Verschieben ziehen">⠿</span>' : ''}
       <span style="font-size:22px">${L.icon}</span>
       <div class="t"><b>${wish ? onListMark(wish.prio) : ''}${esc(L.title)}${fresh ? ` <span class="new">${fresh} neu</span>` : ''}</b>
         <small>${esc(L.sub)}${pack ? ' · Packungspreis' : ''}${f.max ? ` · ${esc(maxLabel(f))}` : ''} · ${m.length ? `${m.length} Angebot${m.length === 1 ? '' : 'e'}` : `kein Angebot${last.length ? `, zuletzt ${dayAgo(lastSeen(last[0]))}` : ''}`}</small></div>
@@ -1063,7 +1064,11 @@ function renderFavs() {
       m.forEach(o => seenNow.push(o.key));
     }
     h += '</section>';
+    if (m.length) withOffer += h; else without += h;
   }
+  h = head + withOffer;
+  if (empty) h += `<div class="fav-empty-h" data-act="favEmptyOpen" role="button" aria-expanded="${S.favEmptyOpen}">
+    Ohne aktuelles Angebot <i>${empty}</i><span class="li-gsum">${S.favEmptyOpen ? '▴' : '▾'}</span></div>${without}`;
   view.innerHTML = h;
   // Aufgeklappte Treffer gelten nach kurzem Anzeigen als gesehen
   clearTimeout(S.seenTimer);
@@ -2173,6 +2178,7 @@ const onClick = {
     rerender();
   },
   favSort: el => { S.favSort = el.dataset.s; save('favSort', S.favSort); rerender(); },
+  favEmptyOpen: () => { S.favEmptyOpen = !S.favEmptyOpen; save('favEmptyOpen', S.favEmptyOpen); rerender(); },
   favOpen: el => { if (Date.now() - (S.dragDone || 0) < 400) return; const id = el.dataset.fid; S.open.has(id) ? S.open.delete(id) : S.open.add(id); rerender(); },
   favMetric: el => {
     const f = S.favs.find(x => x.id === el.dataset.fid);
@@ -2432,7 +2438,6 @@ document.addEventListener('click', e => {
 
 document.addEventListener('change', e => {
   const el = e.target;
-  if ('favHide' in el.dataset) { S.favHideEmpty = el.checked; save('favHideEmpty', el.checked); rerender(); return; }
   if ('setName' in el.dataset) {
     Cloud.setName(el.value);
     liFavsPush(S.favs);  // Favoriten unter dem neuen Namen abgleichen
@@ -2578,7 +2583,7 @@ document.addEventListener('keydown', e => { if (e.key === 'Escape' && S.sheetOpe
     // am Rand automatisch scrollen
     if (y < 90) window.scrollBy(0, -12);
     else if (y > window.innerHeight - 110) window.scrollBy(0, 12);
-    const others = [...view.querySelectorAll('.fav')].filter(s => s !== drag.el);
+    const others = [...view.querySelectorAll('.fav:not(.fav-empty)')].filter(s => s !== drag.el);
     const next = others.find(s => { const r = s.getBoundingClientRect(); return y < r.top + r.height / 2; });
     if (next ? drag.el.nextElementSibling !== next : drag.el !== others[others.length - 1]?.nextElementSibling) {
       if (next) next.before(drag.el); else others[others.length - 1]?.after(drag.el);
@@ -2592,8 +2597,8 @@ document.addEventListener('keydown', e => { if (e.key === 'Escape' && S.sheetOpe
     el.classList.remove('dragging');
     S.dragDone = Date.now();  // folgenden Klick (Auf-/Zuklappen) ignorieren
     if (!moved) return;
-    // ausgeblendete Favoriten (ohne Angebot) behalten ihren Platz, die sichtbaren werden neu verteilt
-    const order = [...view.querySelectorAll('.fav')].map(s => s.dataset.fid), shown = new Set(order);
+    // Favoriten ohne Angebot (eigener Bereich unten) behalten ihren Platz, die übrigen werden neu verteilt
+    const order = [...view.querySelectorAll('.fav:not(.fav-empty)')].map(s => s.dataset.fid), shown = new Set(order);
     const byId = new Map(S.favs.map(f => [f.id, f]));
     let k = 0;
     S.favs.splice(0, S.favs.length, ...S.favs.map(f => shown.has(f.id) ? byId.get(order[k++]) : f));
