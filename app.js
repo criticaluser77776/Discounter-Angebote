@@ -1170,11 +1170,18 @@ function favRange(f, m) {
   return { n, min, max, avg: sum / n, u, d0: d0 === '9999' ? null : d0, cur, fut };
 }
 
-// Spanne eines einzelnen Produkts aus seinem Preisverlauf (Detailansicht)
-function rowsRange(o, rows) {
+// Vergleichsmaß der Detailansicht wie im Favoriten, zu dem das Angebot gehört (Produktfavorit vor Gruppe/Marke/Suche):
+// true = Packungspreis, sonst Grundpreis
+function detailPack(o) {
+  const fs = S.favs.filter(f => favMatch({ ...f, max: null }, o));
+  return byPack(fs.find(f => f.type === 'product') || fs[0]);
+}
+
+// Spanne eines einzelnen Produkts aus seinem Preisverlauf (Detailansicht); pack = Packungspreise statt Grundpreise
+function rowsRange(o, rows, pack = false) {
   const since = new Date(Date.now() - 365 * 864e5).toISOString().slice(0, 10);
   const recent = rows.filter(r => r.valid_from >= since);
-  const unit = recent.filter(r => r.unit_price && r.unit === o.unit);
+  const unit = pack ? [] : recent.filter(r => r.unit_price && r.unit === o.unit);
   const vals = unit.length ? unit.map(r => r.unit_price) : recent.map(r => r.price).filter(Boolean);
   if (!vals.length) return null;
   return { n: vals.length, min: Math.min(...vals), max: Math.max(...vals), avg: vals.reduce((a, b) => a + b, 0) / vals.length,
@@ -1832,7 +1839,8 @@ function detailPrices(o, old, d) {
 function renderHistory(o, rows) {
   const el = $('#hist');
   if (!el) return;
-  const same = rows.filter(r => r.unit_price && r.unit === o.unit);
+  const pack = detailPack(o);  // Favorit mit „Packungspreis“: Verlauf und Leiste je Packung
+  const same = pack ? [] : rows.filter(r => r.unit_price && r.unit === o.unit);
   if (rows.length <= 1) {
     el.innerHTML = '<h3>Preisverlauf</h3><p class="muted">Erstes erfasstes Angebot dieses Produkts – der Verlauf füllt sich mit jeder Woche.</p>';
     return;
@@ -1848,7 +1856,7 @@ function renderHistory(o, rows) {
     const pct = Math.round((cur / val(best) - 1) * 100);
     hint = `Bisher bestes Angebot: ${bestTxt} – aktuell ${pct}% teurer. Wenn du es nicht sofort brauchst, lohnt sich evtl. warten.`;
   }
-  el.innerHTML = `<h3>Preisverlauf</h3>${priceBar(rowsRange(o, rows))}<p class="hint" style="margin:6px 0">${hint}</p>
+  el.innerHTML = `<h3>Preisverlauf${pack ? ' <small class="muted">· Packungspreis (wie im Favoriten)</small>' : ''}</h3>${priceBar(rowsRange(o, rows, pack))}<p class="hint" style="margin:6px 0">${hint}</p>
     <table>${rows.slice(-12).reverse().map(r => `<tr><td>${dshort(r.valid_from)}</td><td>${esc(S.retailers[r.retailer]?.name || r.retailer)}</td>
       <td style="text-align:right">${fmt(r.price)} €</td><td style="text-align:right" class="muted">${r.unit_price ? fmt(r.unit_price) + ' €/' + esc(r.unit) : ''}</td></tr>`).join('')}</table>`;
 }
