@@ -1856,9 +1856,23 @@ function renderHistory(o, rows) {
     const pct = Math.round((cur / val(best) - 1) * 100);
     hint = `Bisher bestes Angebot: ${bestTxt} – aktuell ${pct}% teurer. Wenn du es nicht sofort brauchst, lohnt sich evtl. warten.`;
   }
+  // Liste: nach Preis (günstigste zuerst, Maß wie die Leiste) oder Datum (neueste zuerst); 10 Einträge oder alle
+  if (S.hist?.o.id !== o.id) S.histAll = false;
+  S.hist = { o, rows };
+  const sort = S.histSort || 'price';
+  const byDate = rows.slice().reverse();
+  const key = r => same.length ? (r.unit_price && r.unit === o.unit ? r.unit_price : Infinity) : (r.price || Infinity);
+  const list = sort === 'date' ? byDate : byDate.slice().sort((a, b) => key(a) - key(b));  // stabil: bei Gleichstand neueste zuerst
+  const shown = S.histAll ? list : list.slice(0, 10);
+  const seg = `<div class="seg">${[['price', `Preis${same.length ? ' (€/' + esc(o.unit) + ')' : ''}`], ['date', 'Datum']]
+    .map(([k, l]) => `<button class="${sort === k ? 'on' : ''}" data-act="histSort" data-s="${k}">${l}</button>`).join('')}</div>`;
+  const cap = rows.length <= 10 ? `${rows.length} Einträge` : S.histAll ? `alle ${rows.length} Einträge`
+    : sort === 'date' ? 'die letzten 10' : 'die 10 günstigsten';
   el.innerHTML = `<h3>Preisverlauf${pack ? ' <small class="muted">· Packungspreis (wie im Favoriten)</small>' : ''}</h3>${priceBar(rowsRange(o, rows, pack))}<p class="hint" style="margin:6px 0">${hint}</p>
-    <table>${rows.slice(-12).reverse().map(r => `<tr><td>${dshort(r.valid_from)}</td><td>${esc(S.retailers[r.retailer]?.name || r.retailer)}</td>
-      <td style="text-align:right">${fmt(r.price)} €</td><td style="text-align:right" class="muted">${r.unit_price ? fmt(r.unit_price) + ' €/' + esc(r.unit) : ''}</td></tr>`).join('')}</table>`;
+    <div class="sortbar"><span>${cap}</span>${seg}</div>
+    <table>${shown.map(r => `<tr><td>${dshort(r.valid_from)}</td><td>${esc(S.retailers[r.retailer]?.name || r.retailer)}</td>
+      <td style="text-align:right">${fmt(r.price)} €</td><td style="text-align:right" class="muted">${r.unit_price ? fmt(r.unit_price) + ' €/' + esc(r.unit) : ''}</td></tr>`).join('')}</table>
+    ${rows.length > 10 ? `<button class="btn" style="margin:8px 0" data-act="histAll">${S.histAll ? 'Nur 10 anzeigen' : `Alle ${rows.length} anzeigen`}</button>` : ''}`;
 }
 
 /* ---------- Routing & Rendern ---------- */
@@ -2113,6 +2127,8 @@ const onClick = {
   star: el => { toggleProductFav(S.byId.get(el.dataset.id)); rerender(); },
   add: el => { Li.toggleOffer(S.byId.get(el.dataset.id)); rerender(); },
   addPrio: el => { Li.toggleOffer(S.byId.get(el.dataset.id), true); rerender(); },
+  histSort: el => { S.histSort = el.dataset.s; if (S.hist) renderHistory(S.hist.o, S.hist.rows); },
+  histAll: () => { S.histAll = !S.histAll; if (S.hist) renderHistory(S.hist.o, S.hist.rows); },
   more: () => { S.limit += 120; rerender(); },
   allNew: () => { S.allNew = !S.allNew; S.allFrom = 0; S.limit = 60; render(); window.scrollTo(0, 0); },
   allTop: () => { S.allTop = !S.allTop; S.allFrom = 0; S.limit = 60; render(); window.scrollTo(0, 0); },
@@ -2889,6 +2905,7 @@ const GUIDE = [
       ['Suchbegriffe', 'z.B. „Butter“, „Jacobs Kaffee“. Gesucht wird zuerst genau: am Wortanfang oder als Wortende („Rindergulasch“). Erst wenn das nichts findet, auch mitten im Wort, danach ähnliche Schreibweisen (ab 5 Buchstaben, nur die ähnlichsten). Die Treffer lassen sich nach Produktgruppe und Marke eingrenzen und nach Grundpreis, Preis oder Rabatt sortieren; Treffer nur in der Beschreibung lassen sich zuschalten.'],
       ['Händler-Chips', 'die farbigen Chips oben: markierte Händler werden angezeigt, ohne Markierung alle.'],
       ['Angebot antippen', 'öffnet die Details: Preise mit/ohne App, Normalpreis, Gültigkeit, Märkte, Preisverlauf und Preis-Leiste.'],
+      ['Preisverlauf sortieren', 'in den Details zeigt der Preisverlauf zuerst die 10 günstigsten Einträge (Grund- oder Packungspreis wie im Favoriten), „Datum“ die letzten 10; „Alle anzeigen“ zeigt den ganzen Verlauf.'],
       ['👉 Nach rechts wischen', 'obere Hälfte der Karte = auf den Zettel, untere Hälfte = ❗ wichtig auf den Zettel. Die Zone unter dem Finger leuchtet.'],
       ['☆ an der Karte', 'merkt genau dieses Produkt als Favorit.'],
       ['Suche merken', 'merkt die Suche (mit gewählter Produktgruppe/Marken) als Favorit.'],
@@ -2998,7 +3015,7 @@ const TOUR = [
     points: ['Die Chips oben <b>springen</b> zur jeweiligen Kategorie.',
       'Die <b>Suche</b> bleibt im Reiter: in „Alle“ filtert sie die Liste, in Kategorien zeigt sie die Treffer mit Eingrenzung, bei Favoriten sucht sie im ganzen Katalog.',
       '<b>📱</b> = Preis nur mit Händler-App; unter Mehr → Filter wählst du, welche Apps du nutzt.',
-      'Angebot <b>antippen</b>: Details mit Märkten, Preisverlauf und Preis-Leiste.'], mock: 'alle' },
+      'Angebot <b>antippen</b>: Details mit Märkten, Preis-Leiste und Preisverlauf – sortierbar nach <b>Preis</b> (10 günstigste) oder <b>Datum</b> (letzte 10).'], mock: 'alle' },
   { tab: 1, ico: '👉', title: 'Wischen statt Knöpfe',
     text: 'Ein Angebot oder einen Favoriten <b>nach rechts wischen</b> – schon steht er auf dem Einkaufszettel.',
     demo: true,
